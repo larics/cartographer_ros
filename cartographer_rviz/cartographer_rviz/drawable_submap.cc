@@ -40,7 +40,7 @@ constexpr float kAlphaUpdateThreshold = 0.2f;
 const Ogre::ColourValue kSubmapIdColor(Ogre::ColourValue::Red);
 const Eigen::Vector3d kSubmapIdPosition(0.0, 0.0, 0.3);
 constexpr float kSubmapIdCharHeight = 0.2f;
-constexpr int kNumberOfSlicesPerSubmap = 2;
+constexpr int kNumberOfSlicesPerSubmap = 3;
 
 }  // namespace
 
@@ -64,7 +64,7 @@ DrawableSubmap::DrawableSubmap(const ::cartographer::mapping::SubmapId& id,
   for (int slice_index = 0; slice_index < kNumberOfSlicesPerSubmap;
        ++slice_index) {
     ogre_slices_.emplace_back(::cartographer::common::make_unique<OgreSlice>(
-        id, slice_index, display_context->getSceneManager(), submap_node_));
+        id, slice_index, display_context->getSceneManager(), submap_node_, slice_index == 2));
   }
   // DrawableSubmap creates and manages its visibility property object
   // (a unique_ptr is needed because the Qt parent of the visibility
@@ -138,6 +138,57 @@ bool DrawableSubmap::MaybeFetchTexture(ros::ServiceClient* const client) {
       // 'submap_texture_' member to simplify the signal-slot connection
       // slightly.
       submap_textures_ = std::move(submap_textures);
+      if (submap_textures_->textures.size() == 1) {
+        submap_textures_->textures.push_back(submap_textures_->textures.front());
+        submap_textures_->textures.push_back(submap_textures_->textures.front());
+        auto& texture_filtered = submap_textures_->textures.at(1);
+        auto& frontier_texture = submap_textures_->textures.at(2);
+
+        for (int i = 0; i < texture_filtered.pixels.intensity.size(); i++) {
+          char &intensity = texture_filtered.pixels.intensity.at(i);
+          char &alpha = texture_filtered.pixels.alpha.at(i);
+          //unsigned char add = std::min((unsigned int)255, (unsigned int)(submap_texture.pixels.intensity[i]) + (unsigned int)(submap_texture.pixels.alpha[i]));
+          if (alpha > 0) {
+            alpha = 255;
+          }
+          if (intensity > 0) {
+            if (intensity < 20) intensity = 0;
+            else intensity = 255;
+          }
+        }
+        const int w = texture_filtered.width;
+        const int h = texture_filtered.height;
+        auto is_unknown = [&texture_filtered](int index) {
+          return texture_filtered.pixels.intensity.at(index) == 0 && texture_filtered.pixels.alpha.at(index) == 0;
+        };
+        auto is_free = [&texture_filtered](int index) {
+          return texture_filtered.pixels.intensity.at(index) == (char) 255;
+        };
+        auto is_in_limits = [&texture_filtered](int index) {
+          return (index >= 0) && (index < texture_filtered.pixels.intensity.size());
+        };
+        for (int i = 0; i < texture_filtered.pixels.intensity.size(); i++) {
+          frontier_texture.pixels.intensity.at(i) = 0;
+          frontier_texture.pixels.alpha.at(i) = 0;
+          if (is_unknown(i)) {
+            int free_neighbours = 0;
+            int unknown_neighbours = 0;
+            auto check_neighbour = [&](int index) {
+              if (is_in_limits(index) && is_unknown(index)) unknown_neighbours++;
+              if (is_in_limits(index) && is_free(index)) free_neighbours++;
+            };
+            check_neighbour(i + 1);
+            check_neighbour(i - 1);
+            check_neighbour(i + w);
+            check_neighbour(i + w + 1);
+            check_neighbour(i + w - 1);
+            check_neighbour(i - w);
+            check_neighbour(i - w + 1);
+            check_neighbour(i - w - 1);
+            if (free_neighbours >= 3 && unknown_neighbours >= 3) { frontier_texture.pixels.intensity.at(i) = 255; frontier_texture.pixels.alpha.at(i) = 255; }
+            }
+        }
+      }
       Q_EMIT RequestSucceeded();
     }
   });
@@ -182,6 +233,7 @@ void DrawableSubmap::UpdateSceneNode() {
        ++slice_index) {
     ogre_slices_[slice_index]->Update(submap_textures_->textures[slice_index]);
   }
+
   display_context_->queueRender();
 }
 

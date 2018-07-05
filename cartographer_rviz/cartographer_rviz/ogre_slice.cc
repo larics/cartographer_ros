@@ -51,14 +51,15 @@ Ogre::Quaternion ToOgre(const Eigen::Quaterniond& q) {
 
 OgreSlice::OgreSlice(const ::cartographer::mapping::SubmapId& id, int slice_id,
                      Ogre::SceneManager* const scene_manager,
-                     Ogre::SceneNode* const submap_node)
+                     Ogre::SceneNode* const submap_node, bool red)
     : id_(id),
       slice_id_(slice_id),
       scene_manager_(scene_manager),
       submap_node_(submap_node),
       slice_node_(submap_node_->createChildSceneNode()),
       manual_object_(scene_manager_->createManualObject(
-          kManualObjectPrefix + GetSliceIdentifier(id, slice_id))) {
+          kManualObjectPrefix + GetSliceIdentifier(id, slice_id))),
+          red_(red) {
   material_ = Ogre::MaterialManager::getSingleton().getByName(
       kSubmapSourceMaterialName);
   material_ = material_->clone(kSubmapMaterialPrefix +
@@ -69,6 +70,7 @@ OgreSlice::OgreSlice(const ::cartographer::mapping::SubmapId& id, int slice_id,
   material_->setDepthBias(-1.f, 0.f);
   material_->setDepthWriteEnabled(false);
   slice_node_->attachObject(manual_object_);
+  if (red_) manual_object_->setRenderQueueGroup(Ogre::RENDER_QUEUE_BACKGROUND);
 }
 
 OgreSlice::~OgreSlice() {
@@ -93,7 +95,7 @@ void OgreSlice::Update(
   for (size_t i = 0; i < submap_texture.pixels.intensity.size(); ++i) {
     rgb.push_back(submap_texture.pixels.intensity[i]);
     rgb.push_back(submap_texture.pixels.alpha[i]);
-    rgb.push_back(0);
+    rgb.push_back((red_  && submap_texture.pixels.intensity[i] == (char) 255)? 255 : 0);
   }
 
   manual_object_->clear();
@@ -129,8 +131,11 @@ void OgreSlice::Update(
       pixel_stream, submap_texture.width, submap_texture.height,
       Ogre::PF_BYTE_RGB, Ogre::TEX_TYPE_2D, 0);
 
+
   Ogre::Pass* const pass = material_->getTechnique(0)->getPass(0);
+
   pass->setSceneBlending(Ogre::SBF_ONE, Ogre::SBF_ONE_MINUS_SOURCE_ALPHA);
+
   Ogre::TextureUnitState* const texture_unit =
       pass->getNumTextureUnitStates() > 0 ? pass->getTextureUnitState(0)
                                           : pass->createTextureUnitState();
