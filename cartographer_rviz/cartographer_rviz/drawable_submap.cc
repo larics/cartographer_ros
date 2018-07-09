@@ -142,11 +142,11 @@ bool DrawableSubmap::MaybeFetchTexture(ros::ServiceClient* const client) {
       // slightly.
       submap_textures_ = std::move(submap_textures);
       if (submap_textures_->textures.size() == 1) {
-        /*auto frontier_textures =
+        auto frontier_textures =
         frontier_detector_.handleNewSubmapTexture(id_,
         *submap_textures_->textures.at(0));
         submap_textures_->textures.push_back(std::move(frontier_textures.first));
-        submap_textures_->textures.push_back(std::move(frontier_textures.second));*/
+        submap_textures_->textures.push_back(std::move(frontier_textures.second));
       }
       Q_EMIT RequestSucceeded();
     }
