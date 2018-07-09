@@ -36,6 +36,7 @@
 #include "gflags/gflags.h"
 #include "nav_msgs/OccupancyGrid.h"
 #include "ros/ros.h"
+#include "cartographer_ros/frontier_detection.h"
 
 DEFINE_double(resolution, 0.05,
               "Resolution of a grid cell in the published occupancy grid.");
@@ -80,6 +81,7 @@ class Node {
   ::ros::WallTimer occupancy_grid_publisher_timer_;
   std::string last_frame_id_;
   ros::Time last_timestamp_;
+  frontier::Detector frontier_detector_;
 };
 
 Node::Node(const double resolution, const double publish_period_sec)
@@ -103,12 +105,9 @@ Node::Node(const double resolution, const double publish_period_sec)
 
 void Node::HandleSubmapList(
     const cartographer_ros_msgs::SubmapList::ConstPtr& msg) {
+  frontier_detector_.handleNewSubmapList(msg);
   ::cartographer::common::MutexLocker locker(&mutex_);
 
-  // We do not do any work if nobody listens.
-  if (occupancy_grid_publisher_.getNumSubscribers() == 0) {
-    return;
-  }
 
   // Keep track of submap IDs that don't appear in the message anymore.
   std::set<SubmapId> submap_ids_to_delete;
@@ -136,13 +135,17 @@ void Node::HandleSubmapList(
     if (fetched_textures == nullptr) {
       continue;
     }
+    if (fetched_textures->textures.size() == 1) {
+      auto frontier_textures = frontier_detector_.handleNewSubmapTexture(id, *fetched_textures->textures.at(0));
+      fetched_textures->textures.at(0) = std::move(frontier_textures.first);
+    }
     CHECK(!fetched_textures->textures.empty());
     submap_slice.version = fetched_textures->version;
 
     // We use the first texture only. By convention this is the highest
     // resolution texture and that is the one we want to use to construct the
     // map for ROS.
-    const auto fetched_texture = fetched_textures->textures.begin();
+    const auto fetched_texture = *fetched_textures->textures.begin();
     submap_slice.width = fetched_texture->width;
     submap_slice.height = fetched_texture->height;
     submap_slice.slice_pose = fetched_texture->slice_pose;
@@ -164,7 +167,7 @@ void Node::HandleSubmapList(
 }
 
 void Node::DrawAndPublish(const ::ros::WallTimerEvent& unused_timer_event) {
-  if (submap_slices_.empty() || last_frame_id_.empty()) {
+  if (submap_slices_.empty() || last_frame_id_.empty() || occupancy_grid_publisher_.getNumSubscribers() == 0) {
     return;
   }
 

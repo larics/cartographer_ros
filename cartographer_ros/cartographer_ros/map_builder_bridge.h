@@ -22,6 +22,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "cartographer_ros/frontier_detection.h"
 #include "cartographer/common/mutex.h"
 #include "cartographer/mapping/map_builder_interface.h"
 #include "cartographer/mapping/pose_graph_interface.h"
@@ -99,6 +100,10 @@ class MapBuilderBridge {
                                 TrajectoryBuilderInterface::InsertionResult>
           insertion_result) EXCLUDES(mutex_);
 
+  void OnGlobalSlamResult();
+
+  frontier::Detector frontier_detector_;
+
   cartographer::common::Mutex mutex_;
   const NodeOptions node_options_;
   std::unordered_map<int,
@@ -106,6 +111,7 @@ class MapBuilderBridge {
       local_slam_data_ GUARDED_BY(mutex_);
   std::unique_ptr<cartographer::mapping::MapBuilderInterface> map_builder_;
   tf2_ros::Buffer* const tf_buffer_;
+  std::atomic<int> optimizations_performed_;
 
   std::unordered_map<std::string /* landmark ID */, int> landmark_to_index_;
 

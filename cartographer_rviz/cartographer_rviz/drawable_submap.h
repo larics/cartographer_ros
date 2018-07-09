@@ -38,6 +38,7 @@
 #include "rviz/ogre_helpers/axes.h"
 #include "rviz/ogre_helpers/movable_text.h"
 #include "rviz/properties/bool_property.h"
+#include "cartographer_ros/frontier_detection.h"
 
 namespace cartographer_rviz {
 
@@ -50,7 +51,8 @@ class DrawableSubmap : public QObject {
   DrawableSubmap(const ::cartographer::mapping::SubmapId& submap_id,
                  ::rviz::DisplayContext* display_context,
                  Ogre::SceneNode* map_node, ::rviz::Property* submap_category,
-                 bool visible, float pose_axes_length, float pose_axes_radius);
+                 bool visible, float pose_axes_length, float pose_axes_radius,
+                 frontier::Detector& frontier_detector);
   ~DrawableSubmap() override;
   DrawableSubmap(const DrawableSubmap&) = delete;
   DrawableSubmap& operator=(const DrawableSubmap&) = delete;
@@ -112,6 +114,7 @@ class DrawableSubmap : public QObject {
       GUARDED_BY(mutex_);
   float current_alpha_ = 0.f;
   std::unique_ptr<::rviz::BoolProperty> visibility_;
+  frontier::Detector& frontier_detector_;
 };
 
 }  // namespace cartographer_rviz

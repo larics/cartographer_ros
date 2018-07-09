@@ -49,7 +49,8 @@ DrawableSubmap::DrawableSubmap(const ::cartographer::mapping::SubmapId& id,
                                Ogre::SceneNode* const map_node,
                                ::rviz::Property* const submap_category,
                                const bool visible, const float pose_axes_length,
-                               const float pose_axes_radius)
+                               const float pose_axes_radius,
+                               frontier::Detector& frontier_detector)
     : id_(id),
       display_context_(display_context),
       submap_node_(map_node->createChildSceneNode()),
@@ -60,7 +61,9 @@ DrawableSubmap::DrawableSubmap(const ::cartographer::mapping::SubmapId& id,
                           .arg(id.trajectory_id)
                           .arg(id.submap_index)
                           .toStdString()),
-      last_query_timestamp_(0) {
+      last_query_timestamp_(0),
+      frontier_detector_(frontier_detector)
+      {
   for (int slice_index = 0; slice_index < kNumberOfSlicesPerSubmap;
        ++slice_index) {
     ogre_slices_.emplace_back(::cartographer::common::make_unique<OgreSlice>(
@@ -139,55 +142,9 @@ bool DrawableSubmap::MaybeFetchTexture(ros::ServiceClient* const client) {
       // slightly.
       submap_textures_ = std::move(submap_textures);
       if (submap_textures_->textures.size() == 1) {
-        submap_textures_->textures.push_back(submap_textures_->textures.front());
-        submap_textures_->textures.push_back(submap_textures_->textures.front());
-        auto& texture_filtered = submap_textures_->textures.at(1);
-        auto& frontier_texture = submap_textures_->textures.at(2);
-
-        for (int i = 0; i < texture_filtered.pixels.intensity.size(); i++) {
-          char &intensity = texture_filtered.pixels.intensity.at(i);
-          char &alpha = texture_filtered.pixels.alpha.at(i);
-          //unsigned char add = std::min((unsigned int)255, (unsigned int)(submap_texture.pixels.intensity[i]) + (unsigned int)(submap_texture.pixels.alpha[i]));
-          if (alpha > 0) {
-            alpha = 255;
-          }
-          if (intensity > 0) {
-            if (intensity < 20) intensity = 0;
-            else intensity = 255;
-          }
-        }
-        const int w = texture_filtered.width;
-        const int h = texture_filtered.height;
-        auto is_unknown = [&texture_filtered](int index) {
-          return texture_filtered.pixels.intensity.at(index) == 0 && texture_filtered.pixels.alpha.at(index) == 0;
-        };
-        auto is_free = [&texture_filtered](int index) {
-          return texture_filtered.pixels.intensity.at(index) == (char) 255;
-        };
-        auto is_in_limits = [&texture_filtered](int index) {
-          return (index >= 0) && (index < texture_filtered.pixels.intensity.size());
-        };
-        for (int i = 0; i < texture_filtered.pixels.intensity.size(); i++) {
-          frontier_texture.pixels.intensity.at(i) = 0;
-          frontier_texture.pixels.alpha.at(i) = 0;
-          if (is_unknown(i)) {
-            int free_neighbours = 0;
-            int unknown_neighbours = 0;
-            auto check_neighbour = [&](int index) {
-              if (is_in_limits(index) && is_unknown(index)) unknown_neighbours++;
-              if (is_in_limits(index) && is_free(index)) free_neighbours++;
-            };
-            check_neighbour(i + 1);
-            check_neighbour(i - 1);
-            check_neighbour(i + w);
-            check_neighbour(i + w + 1);
-            check_neighbour(i + w - 1);
-            check_neighbour(i - w);
-            check_neighbour(i - w + 1);
-            check_neighbour(i - w - 1);
-            if (free_neighbours >= 3 && unknown_neighbours >= 3) { frontier_texture.pixels.intensity.at(i) = 255; frontier_texture.pixels.alpha.at(i) = 255; }
-            }
-        }
+        /*auto frontier_textures = frontier_detector_.handleNewSubmapTexture(id_, *submap_textures_->textures.at(0));
+        submap_textures_->textures.push_back(std::move(frontier_textures.first));
+        submap_textures_->textures.push_back(std::move(frontier_textures.second));*/
       }
       Q_EMIT RequestSucceeded();
     }
@@ -231,7 +188,7 @@ void DrawableSubmap::UpdateSceneNode() {
   for (size_t slice_index = 0; slice_index < ogre_slices_.size() &&
                                slice_index < submap_textures_->textures.size();
        ++slice_index) {
-    ogre_slices_[slice_index]->Update(submap_textures_->textures[slice_index]);
+    ogre_slices_[slice_index]->Update(*submap_textures_->textures[slice_index]);
   }
 
   display_context_->queueRender();

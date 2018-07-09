@@ -101,7 +101,14 @@ MapBuilderBridge::MapBuilderBridge(
     tf2_ros::Buffer* const tf_buffer)
     : node_options_(node_options),
       map_builder_(std::move(map_builder)),
-      tf_buffer_(tf_buffer) {}
+      tf_buffer_(tf_buffer),
+      optimizations_performed_(0) {
+  map_builder_->pose_graph()->SetGlobalSlamOptimizationCallback(std::bind(&MapBuilderBridge::OnGlobalSlamResult, this));
+}
+
+void MapBuilderBridge::OnGlobalSlamResult() {
+  optimizations_performed_++;
+}
 
 void MapBuilderBridge::LoadState(const std::string& state_filename,
                                  bool load_frozen_state) {
@@ -202,6 +209,7 @@ MapBuilderBridge::GetTrajectoryStates() {
 cartographer_ros_msgs::SubmapList MapBuilderBridge::GetSubmapList() {
   cartographer_ros_msgs::SubmapList submap_list;
   submap_list.header.stamp = ::ros::Time::now();
+  submap_list.optimizations_performed = optimizations_performed_;
   submap_list.header.frame_id = node_options_.map_frame;
   for (const auto& submap_id_pose :
        map_builder_->pose_graph()->GetAllSubmapPoses()) {
@@ -492,13 +500,20 @@ void MapBuilderBridge::OnLocalSlamResult(
     const Rigid3d local_pose,
     ::cartographer::sensor::RangeData range_data_in_local,
     const std::unique_ptr<const ::cartographer::mapping::
-                              TrajectoryBuilderInterface::InsertionResult>) {
+                              TrajectoryBuilderInterface::InsertionResult> result) {
   std::shared_ptr<const LocalTrajectoryData::LocalSlamData> local_slam_data =
       std::make_shared<LocalTrajectoryData::LocalSlamData>(
           LocalTrajectoryData::LocalSlamData{time, local_pose,
                                              std::move(range_data_in_local)});
   cartographer::common::MutexLocker lock(&mutex_);
   local_slam_data_[trajectory_id] = std::move(local_slam_data);
+  /*if (result) {
+    for (const auto& submap : result->insertion_submaps) {
+      proto::SubmapQuery::Response response;
+      submap->ToResponseProto({}, response);
+    }
+  }
+  frontier_detector_.handleNewSubmapTexture()*/
 }
 
 }  // namespace cartographer_ros

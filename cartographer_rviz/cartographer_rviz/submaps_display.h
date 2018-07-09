@@ -31,6 +31,7 @@
 #include "rviz/properties/float_property.h"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
+#include "cartographer_ros/frontier_detection.h"
 
 namespace cartographer_rviz {
 
@@ -97,6 +98,8 @@ class SubmapsDisplay
   ::rviz::Property* trajectories_category_;
   ::rviz::BoolProperty* visibility_all_enabled_;
   ::rviz::FloatProperty* fade_out_start_distance_in_meters_;
+
+  frontier::Detector frontier_detector_;
 };
 
 }  // namespace cartographer_rviz

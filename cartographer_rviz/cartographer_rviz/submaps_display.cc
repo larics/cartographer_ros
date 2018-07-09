@@ -115,6 +115,7 @@ void SubmapsDisplay::reset() {
 void SubmapsDisplay::processMessage(
     const ::cartographer_ros_msgs::SubmapList::ConstPtr& msg) {
   ::cartographer::common::MutexLocker locker(&mutex_);
+  //frontier_detector_.handleNewSubmapList(msg);
   map_frame_ =
       ::cartographer::common::make_unique<std::string>(msg->header.frame_id);
   // In case Cartographer node is relaunched, destroy trajectories from the
@@ -160,7 +161,7 @@ void SubmapsDisplay::processMessage(
           ::cartographer::common::make_unique<DrawableSubmap>(
               id, context_, map_node_, trajectory_visibility.get(),
               trajectory_visibility->getBool(), kSubmapPoseAxesLength,
-              kSubmapPoseAxesRadius));
+              kSubmapPoseAxesRadius, frontier_detector_));
       trajectory_submaps.at(id.submap_index)
           ->SetSliceVisibility(0, slice_high_resolution_enabled_->getBool());
       trajectory_submaps.at(id.submap_index)
