@@ -149,14 +149,13 @@ void Detector::publishUpdatedFrontiers() {
               const Eigen::Array2i cell_index_d{cell_index[0] + dx[i],
                                                 cell_index[1] + dy[i]};
               const auto flat_index =
-                  ToFlatIndex(cell_index_d, submap_j_texture);
-              if (Contains(cell_index_d, submap_j_texture) &&
-                  (static_cast<unsigned char>(
-                       submap_j_texture.pixels.intensity.at(flat_index)) ==
-                       255 ||
-                   static_cast<unsigned char>(
-                       submap_j_texture.pixels.alpha.at(flat_index) == 255))) {
-                ok = false;
+                  ToFlatIndex(cell_index, submap_j_texture);
+              if (Contains(cell_index, submap_j_texture)) {
+                unsigned char intensity = static_cast<unsigned char>(
+                    submap_j_texture.pixels.intensity.at(flat_index));
+                unsigned char alpha = static_cast<unsigned char>(
+                    submap_j_texture.pixels.alpha.at(flat_index));
+                if (intensity == 255 || alpha == 255) ok = false;
               }
             }
           };
