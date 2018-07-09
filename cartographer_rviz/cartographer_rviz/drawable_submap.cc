@@ -62,12 +62,12 @@ DrawableSubmap::DrawableSubmap(const ::cartographer::mapping::SubmapId& id,
                           .arg(id.submap_index)
                           .toStdString()),
       last_query_timestamp_(0),
-      frontier_detector_(frontier_detector)
-      {
+      frontier_detector_(frontier_detector) {
   for (int slice_index = 0; slice_index < kNumberOfSlicesPerSubmap;
        ++slice_index) {
     ogre_slices_.emplace_back(::cartographer::common::make_unique<OgreSlice>(
-        id, slice_index, display_context->getSceneManager(), submap_node_, slice_index == 2));
+        id, slice_index, display_context->getSceneManager(), submap_node_,
+        slice_index == 2));
   }
   // DrawableSubmap creates and manages its visibility property object
   // (a unique_ptr is needed because the Qt parent of the visibility
@@ -142,7 +142,9 @@ bool DrawableSubmap::MaybeFetchTexture(ros::ServiceClient* const client) {
       // slightly.
       submap_textures_ = std::move(submap_textures);
       if (submap_textures_->textures.size() == 1) {
-        /*auto frontier_textures = frontier_detector_.handleNewSubmapTexture(id_, *submap_textures_->textures.at(0));
+        /*auto frontier_textures =
+        frontier_detector_.handleNewSubmapTexture(id_,
+        *submap_textures_->textures.at(0));
         submap_textures_->textures.push_back(std::move(frontier_textures.first));
         submap_textures_->textures.push_back(std::move(frontier_textures.second));*/
       }

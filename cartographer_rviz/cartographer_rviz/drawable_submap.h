@@ -28,6 +28,7 @@
 #include "cartographer/io/submap_painter.h"
 #include "cartographer/mapping/id.h"
 #include "cartographer/transform/rigid_transform.h"
+#include "cartographer_ros/frontier_detection.h"
 #include "cartographer_ros/submap.h"
 #include "cartographer_ros_msgs/SubmapEntry.h"
 #include "cartographer_ros_msgs/SubmapQuery.h"
@@ -38,7 +39,6 @@
 #include "rviz/ogre_helpers/axes.h"
 #include "rviz/ogre_helpers/movable_text.h"
 #include "rviz/properties/bool_property.h"
-#include "cartographer_ros/frontier_detection.h"
 
 namespace cartographer_rviz {
 

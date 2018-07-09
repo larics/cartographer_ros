@@ -24,6 +24,7 @@
 
 #include "cartographer/common/mutex.h"
 #include "cartographer/common/port.h"
+#include "cartographer_ros/frontier_detection.h"
 #include "cartographer_ros_msgs/SubmapList.h"
 #include "cartographer_rviz/drawable_submap.h"
 #include "rviz/message_filter_display.h"
@@ -31,7 +32,6 @@
 #include "rviz/properties/float_property.h"
 #include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_listener.h"
-#include "cartographer_ros/frontier_detection.h"
 
 namespace cartographer_rviz {
 

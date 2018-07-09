@@ -27,6 +27,7 @@
 #include "cartographer/io/submap_painter.h"
 #include "cartographer/mapping/id.h"
 #include "cartographer/transform/rigid_transform.h"
+#include "cartographer_ros/frontier_detection.h"
 #include "cartographer_ros/msg_conversion.h"
 #include "cartographer_ros/node_constants.h"
 #include "cartographer_ros/ros_log_sink.h"
@@ -36,7 +37,6 @@
 #include "gflags/gflags.h"
 #include "nav_msgs/OccupancyGrid.h"
 #include "ros/ros.h"
-#include "cartographer_ros/frontier_detection.h"
 
 DEFINE_double(resolution, 0.05,
               "Resolution of a grid cell in the published occupancy grid.");
@@ -108,7 +108,6 @@ void Node::HandleSubmapList(
   frontier_detector_.handleNewSubmapList(msg);
   ::cartographer::common::MutexLocker locker(&mutex_);
 
-
   // Keep track of submap IDs that don't appear in the message anymore.
   std::set<SubmapId> submap_ids_to_delete;
   for (const auto& pair : submap_slices_) {
@@ -136,7 +135,8 @@ void Node::HandleSubmapList(
       continue;
     }
     if (fetched_textures->textures.size() == 1) {
-      auto frontier_textures = frontier_detector_.handleNewSubmapTexture(id, *fetched_textures->textures.at(0));
+      auto frontier_textures = frontier_detector_.handleNewSubmapTexture(
+          id, *fetched_textures->textures.at(0));
       fetched_textures->textures.at(0) = std::move(frontier_textures.first);
     }
     CHECK(!fetched_textures->textures.empty());
@@ -167,7 +167,8 @@ void Node::HandleSubmapList(
 }
 
 void Node::DrawAndPublish(const ::ros::WallTimerEvent& unused_timer_event) {
-  if (submap_slices_.empty() || last_frame_id_.empty() || occupancy_grid_publisher_.getNumSubscribers() == 0) {
+  if (submap_slices_.empty() || last_frame_id_.empty() ||
+      occupancy_grid_publisher_.getNumSubscribers() == 0) {
     return;
   }
 

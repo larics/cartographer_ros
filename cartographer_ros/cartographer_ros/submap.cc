@@ -44,11 +44,13 @@ std::unique_ptr<::cartographer::io::SubmapTextures> FetchSubmapTextures(
   for (const auto& texture : srv.response.textures) {
     const std::string compressed_cells(texture.cells.begin(),
                                        texture.cells.end());
-    response->textures.emplace_back(std::make_shared<::cartographer::io::SubmapTexture>(::cartographer::io::SubmapTexture{
-        ::cartographer::io::UnpackTextureData(compressed_cells, texture.width,
-                                              texture.height),
-        texture.width, texture.height, texture.resolution,
-        ToRigid3d(texture.slice_pose)}));
+    response->textures.emplace_back(
+        std::make_shared<::cartographer::io::SubmapTexture>(
+            ::cartographer::io::SubmapTexture{
+                ::cartographer::io::UnpackTextureData(
+                    compressed_cells, texture.width, texture.height),
+                texture.width, texture.height, texture.resolution,
+                ToRigid3d(texture.slice_pose)}));
   }
   return response;
 }

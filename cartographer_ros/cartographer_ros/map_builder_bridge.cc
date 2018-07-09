@@ -103,12 +103,11 @@ MapBuilderBridge::MapBuilderBridge(
       map_builder_(std::move(map_builder)),
       tf_buffer_(tf_buffer),
       optimizations_performed_(0) {
-  map_builder_->pose_graph()->SetGlobalSlamOptimizationCallback(std::bind(&MapBuilderBridge::OnGlobalSlamResult, this));
+  map_builder_->pose_graph()->SetGlobalSlamOptimizationCallback(
+      std::bind(&MapBuilderBridge::OnGlobalSlamResult, this));
 }
 
-void MapBuilderBridge::OnGlobalSlamResult() {
-  optimizations_performed_++;
-}
+void MapBuilderBridge::OnGlobalSlamResult() { optimizations_performed_++; }
 
 void MapBuilderBridge::LoadState(const std::string& state_filename,
                                  bool load_frozen_state) {
@@ -500,7 +499,8 @@ void MapBuilderBridge::OnLocalSlamResult(
     const Rigid3d local_pose,
     ::cartographer::sensor::RangeData range_data_in_local,
     const std::unique_ptr<const ::cartographer::mapping::
-                              TrajectoryBuilderInterface::InsertionResult> result) {
+                              TrajectoryBuilderInterface::InsertionResult>
+        result) {
   std::shared_ptr<const LocalTrajectoryData::LocalSlamData> local_slam_data =
       std::make_shared<LocalTrajectoryData::LocalSlamData>(
           LocalTrajectoryData::LocalSlamData{time, local_pose,
