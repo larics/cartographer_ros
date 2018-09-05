@@ -5,9 +5,12 @@
 
 namespace frontier {
 
-Detector::Detector() : last_optimization_epoch_(-1) {
-  frontier_publisher_ = ros::NodeHandle().advertise<visualization_msgs::Marker>(
-      "frontier_marker", 1, true);
+Detector::Detector(const bool publish)
+    : last_optimization_epoch_(-1), publish_(publish) {
+  if (publish_)
+    frontier_publisher_ =
+        ros::NodeHandle().advertise<visualization_msgs::Marker>(
+            "frontier_marker", 1, true);
 }
 
 void Detector::handleNewSubmapList(
@@ -17,16 +20,17 @@ void Detector::handleNewSubmapList(
   submap_poses_.clear();
 
   for (const auto& entry : submap_list->submap) {
-    const cartographer::mapping::SubmapId submap_id{entry.trajectory_id, entry.submap_index};
+    const cartographer::mapping::SubmapId submap_id{entry.trajectory_id,
+                                                    entry.submap_index};
     submap_poses_.emplace(
-        std::piecewise_construct,
-        std::forward_as_tuple(submap_id),
-        std::forward_as_tuple(cartographer_ros::ToRigid3d(entry.pose)));
+        std::piecewise_construct, std::forward_as_tuple(submap_id),
+        std::forward_as_tuple(std::make_pair(
+            entry.submap_version, cartographer_ros::ToRigid3d(entry.pose))));
   }
   if (submap_list->optimizations_performed != last_optimization_epoch_) {
     last_optimization_epoch_ = submap_list->optimizations_performed;
     lock.unlock();
-    publishUpdatedFrontiers();
+    if (publish_) publishUpdatedFrontiers();
   }
 }
 
@@ -95,13 +99,15 @@ void Detector::publishUpdatedFrontiers() {
     // if (i==2)
     // break;
     const auto& id_i = submap_i.first;
-    if (submap_frontier_cells_.count(id_i) == 0) {
+    const int submap_i_version = submap_i.second.first;
+    if (submap_textures_.count(id_i) == 0 ||
+        submap_i_version != submap_textures_.at(id_i)->version) {
       return;  // let's wait until we fetch that submap
     }
     if (!submap_textures_.count(id_i)) return;
     auto& frontier_cells = submap_frontier_cells_.at(id_i);
     const auto& submap_i_texture = submap_textures_.at(id_i)->textures.at(1);
-    const auto& submap_i_pose = submap_i.second;
+    const auto& submap_i_pose = submap_i.second.second;
 
     /*
     std_msgs::ColorRGBA color;
@@ -138,8 +144,9 @@ void Detector::publishUpdatedFrontiers() {
       const auto validate_submap =
           [&](const cartographer::mapping::SubmapId& id_j) {
             if (!submap_textures_.count(id_j)) return;
-            const auto& submap_j_texture = submap_textures_.at(id_j)->textures.at(1);
-            const auto& submap_j_pose = submap_poses_.at(id_j);
+            const auto& submap_j_texture =
+                submap_textures_.at(id_j)->textures.at(1);
+            const auto& submap_j_pose = submap_poses_.at(id_j).second;
 
             const auto cell_index =
                 GetCellIndex(submap_j_pose, global, submap_j_texture);
@@ -148,8 +155,7 @@ void Detector::publishUpdatedFrontiers() {
             for (int i = 4; i < 5; i++) {
               const Eigen::Array2i cell_index_d{cell_index[0] + dx[i],
                                                 cell_index[1] + dy[i]};
-              const auto flat_index =
-                  ToFlatIndex(cell_index, submap_j_texture);
+              const auto flat_index = ToFlatIndex(cell_index, submap_j_texture);
               if (Contains(cell_index, submap_j_texture)) {
                 unsigned char intensity = static_cast<unsigned char>(
                     submap_j_texture.pixels.intensity.at(flat_index));
@@ -163,7 +169,8 @@ void Detector::publishUpdatedFrontiers() {
       if (submap_hint != nullptr) {
         if (submap_poses_.count(*submap_hint))
           validate_submap(*submap_hint);
-        else submap_hint = nullptr;
+        else
+          submap_hint = nullptr;
       }
 
       if (ok)
@@ -171,8 +178,8 @@ void Detector::publishUpdatedFrontiers() {
           if (id_i == submap_j.first) continue;
           validate_submap(submap_j.first);
           if (!ok) {
-            submap_hint = absl::make_unique<
-                cartographer::mapping::SubmapId>(submap_j.first);
+            submap_hint = absl::make_unique<cartographer::mapping::SubmapId>(
+                submap_j.first);
             break;
           }
         }
@@ -191,9 +198,11 @@ void Detector::publishUpdatedFrontiers() {
 
 void Detector::handleNewSubmapTexture(
     const cartographer::mapping::SubmapId& id,
-    const std::shared_ptr<cartographer::io::SubmapTextures>& new_texture, const bool update) {
-  auto texture_filtered = cartographer::io::SubmapTexture(new_texture->textures.at(0));
-  auto frontier_texture = cartographer::io::SubmapTexture(new_texture->textures.at(0));
+    const std::shared_ptr<cartographer::io::SubmapTextures>& new_texture) {
+  auto texture_filtered =
+      cartographer::io::SubmapTexture(new_texture->textures.at(0));
+  auto frontier_texture =
+      cartographer::io::SubmapTexture(new_texture->textures.at(0));
 
   for (int i = 0; i < texture_filtered.pixels.intensity.size(); i++) {
     char& intensity = texture_filtered.pixels.intensity.at(i);
@@ -247,8 +256,8 @@ void Detector::handleNewSubmapTexture(
       if (free_neighbours >= 3 && unknown_neighbours >= 3) {
         frontier_texture.pixels.intensity.at(i) = 255;
         frontier_texture.pixels.alpha.at(i) = 255;
-        submap_frontier_cells.push_back(std::make_pair(
-            FromFlatIndex(i, frontier_texture), nullptr));
+        submap_frontier_cells.push_back(
+            std::make_pair(FromFlatIndex(i, frontier_texture), nullptr));
       }
     }
   }
@@ -261,7 +270,7 @@ void Detector::handleNewSubmapTexture(
     new_texture->textures.push_back(frontier_texture);
   }
 
-  if (update) publishUpdatedFrontiers();
+  if (publish_) publishUpdatedFrontiers();
 }
 
 }  // namespace frontier

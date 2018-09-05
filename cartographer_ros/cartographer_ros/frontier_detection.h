@@ -13,11 +13,11 @@ namespace frontier {
 
 class Detector {
  public:
-  Detector();
+  Detector(bool publish = true);
 
-  void handleNewSubmapTexture(const cartographer::mapping::SubmapId& id,
-                         const std::shared_ptr<cartographer::io::SubmapTextures>&,
-                         bool update = true);
+  void handleNewSubmapTexture(
+      const cartographer::mapping::SubmapId& id,
+      const std::shared_ptr<cartographer::io::SubmapTextures>&);
 
   void handleNewSubmapList(
       const cartographer_ros_msgs::SubmapList::ConstPtr& submap_list);
@@ -36,10 +36,13 @@ class Detector {
                             std::unique_ptr<cartographer::mapping::SubmapId>>>>
       submap_frontier_cells_;
   // cartographer_ros_msgs::SubmapList::ConstPtr last_submap_list_;
-  std::map<cartographer::mapping::SubmapId, cartographer::transform::Rigid3d>
+  std::map<cartographer::mapping::SubmapId,
+           std::pair<int /* version */, cartographer::transform::Rigid3d>>
       submap_poses_;
   ros::Publisher frontier_publisher_;
   int last_optimization_epoch_;
+
+  bool publish_;
 };
 
 }  // namespace frontier

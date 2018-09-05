@@ -94,7 +94,7 @@ class SubmapsDisplay
   absl::Mutex mutex_;
   ::rviz::BoolProperty* slice_high_resolution_enabled_;
   ::rviz::BoolProperty* slice_low_resolution_enabled_;
-  ::rviz::BoolProperty* slice_third_enabled_;
+  ::rviz::BoolProperty* slice_frontier_enabled_;
   ::rviz::Property* trajectories_category_;
   ::rviz::BoolProperty* visibility_all_enabled_;
   ::rviz::FloatProperty* fade_out_start_distance_in_meters_;
