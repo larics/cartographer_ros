@@ -135,9 +135,7 @@ void Node::HandleSubmapList(
       continue;
     }
     if (fetched_textures->textures.size() == 1) {
-      auto frontier_textures = frontier_detector_.handleNewSubmapTexture(
-          id, *fetched_textures->textures.at(0));
-      fetched_textures->textures.at(0) = std::move(frontier_textures.first);
+      frontier_detector_.handleNewSubmapTexture(id, fetched_textures);
     }
     CHECK(!fetched_textures->textures.empty());
     submap_slice.version = fetched_textures->version;
@@ -145,15 +143,15 @@ void Node::HandleSubmapList(
     // We use the first texture only. By convention this is the highest
     // resolution texture and that is the one we want to use to construct the
     // map for ROS.
-    const auto fetched_texture = *fetched_textures->textures.begin();
-    submap_slice.width = fetched_texture->width;
-    submap_slice.height = fetched_texture->height;
-    submap_slice.slice_pose = fetched_texture->slice_pose;
-    submap_slice.resolution = fetched_texture->resolution;
+    const auto& fetched_texture = fetched_textures->textures.front();
+    submap_slice.width = fetched_texture.width;
+    submap_slice.height = fetched_texture.height;
+    submap_slice.slice_pose = fetched_texture.slice_pose;
+    submap_slice.resolution = fetched_texture.resolution;
     submap_slice.cairo_data.clear();
     submap_slice.surface = ::cartographer::io::DrawTexture(
-        fetched_texture->pixels.intensity, fetched_texture->pixels.alpha,
-        fetched_texture->width, fetched_texture->height,
+        fetched_texture.pixels.intensity, fetched_texture.pixels.alpha,
+        fetched_texture.width, fetched_texture.height,
         &submap_slice.cairo_data);
   }
 

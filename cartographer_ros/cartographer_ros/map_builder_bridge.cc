@@ -134,8 +134,8 @@ int MapBuilderBridge::AddTrajectory(
              ::cartographer::sensor::RangeData range_data_in_local,
              const std::unique_ptr<
                  const ::cartographer::mapping::TrajectoryBuilderInterface::
-                     InsertionResult>) {
-        OnLocalSlamResult(trajectory_id, time, local_pose, range_data_in_local);
+                     InsertionResult>& insertion_result) {
+        OnLocalSlamResult(trajectory_id, time, local_pose, range_data_in_local, insertion_result);
       });
   LOG(INFO) << "Added trajectory with ID '" << trajectory_id << "'.";
 

@@ -15,10 +15,8 @@ class Detector {
  public:
   Detector();
 
-  std::pair<std::shared_ptr<cartographer::io::SubmapTexture>,
-            std::shared_ptr<cartographer::io::SubmapTexture>>
-  handleNewSubmapTexture(const cartographer::mapping::SubmapId& id,
-                         const cartographer::io::SubmapTexture&,
+  void handleNewSubmapTexture(const cartographer::mapping::SubmapId& id,
+                         const std::shared_ptr<cartographer::io::SubmapTextures>&,
                          bool update = true);
 
   void handleNewSubmapList(
@@ -29,11 +27,8 @@ class Detector {
  private:
   std::mutex mutex_;
   std::map<cartographer::mapping::SubmapId,
-           std::shared_ptr<cartographer::io::SubmapTexture>>
-      frontier_textures_;
-  std::map<cartographer::mapping::SubmapId,
-           std::shared_ptr<cartographer::io::SubmapTexture>>
-      filtered_textures_;
+           std::shared_ptr<cartographer::io::SubmapTextures>>
+      submap_textures_;
 
   std::map<
       cartographer::mapping::SubmapId,
