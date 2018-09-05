@@ -1,4 +1,4 @@
-#include <cartographer/common/mutex.h>
+#include <absl/synchronization/mutex.h>
 #include <cartographer/mapping/2d/map_limits.h>
 #include <cartographer_ros/frontier_detection.h>
 #include <cartographer_ros/msg_conversion.h>
@@ -169,7 +169,7 @@ void Detector::publishUpdatedFrontiers() {
           if (id_i == submap_j.first) continue;
           validate_submap(submap_j.first);
           if (!ok) {
-            submap_hint = cartographer::common::make_unique<
+            submap_hint = absl::make_unique<
                 cartographer::mapping::SubmapId>(submap_j.first);
             break;
           }

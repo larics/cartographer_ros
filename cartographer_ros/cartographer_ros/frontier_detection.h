@@ -1,7 +1,6 @@
 #ifndef CARTOGRAPHER_ROS_CARTOGRAPHER_ROS_FRONTIER_DETECTION_H
 #define CARTOGRAPHER_ROS_CARTOGRAPHER_ROS_FRONTIER_DETECTION_H
 
-#include <cartographer/common/optional.h>
 #include <cartographer/io/submap_painter.h>
 #include <cartographer/mapping/id.h>
 #include <cartographer/transform/rigid_transform.h>

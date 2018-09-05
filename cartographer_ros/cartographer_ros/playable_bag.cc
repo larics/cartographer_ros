@@ -16,7 +16,7 @@
 
 #include "cartographer_ros/playable_bag.h"
 
-#include "cartographer/common/make_unique.h"
+#include "absl/memory/memory.h"
 #include "cartographer_ros/node_constants.h"
 #include "glog/logging.h"
 #include "tf2_msgs/TFMessage.h"
@@ -28,10 +28,8 @@ PlayableBag::PlayableBag(
     const ros::Time start_time, const ros::Time end_time,
     const ros::Duration buffer_delay,
     FilteringEarlyMessageHandler filtering_early_message_handler)
-    : bag_(cartographer::common::make_unique<rosbag::Bag>(
-          bag_filename, rosbag::bagmode::Read)),
-      view_(cartographer::common::make_unique<rosbag::View>(*bag_, start_time,
-                                                            end_time)),
+    : bag_(absl::make_unique<rosbag::Bag>(bag_filename, rosbag::bagmode::Read)),
+      view_(absl::make_unique<rosbag::View>(*bag_, start_time, end_time)),
       view_iterator_(view_->begin()),
       finished_(false),
       bag_id_(bag_id),
@@ -43,6 +41,9 @@ PlayableBag::PlayableBag(
       filtering_early_message_handler_(
           std::move(filtering_early_message_handler)) {
   AdvanceUntilMessageAvailable();
+  for (const auto* connection_info : view_->getConnections()) {
+    topics_.insert(connection_info->topic);
+  }
 }
 
 ros::Time PlayableBag::PeekMessageTime() const {
@@ -99,6 +100,9 @@ void PlayableBag::AdvanceUntilMessageAvailable() {
 }
 
 void PlayableBagMultiplexer::AddPlayableBag(PlayableBag playable_bag) {
+  for (const auto& topic : playable_bag.topics()) {
+    topics_.insert(topic);
+  }
   playable_bags_.push_back(std::move(playable_bag));
   CHECK(playable_bags_.back().IsMessageAvailable());
   next_message_queue_.emplace(
