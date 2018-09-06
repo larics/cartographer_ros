@@ -15,12 +15,14 @@ class Detector {
  public:
   Detector(bool publish = true);
 
+  void InitPublisher();
+
   void handleNewSubmapTexture(
       const cartographer::mapping::SubmapId& id,
       const std::shared_ptr<cartographer::io::SubmapTextures>&);
 
   void handleNewSubmapList(
-      const cartographer_ros_msgs::SubmapList::ConstPtr& submap_list);
+      const cartographer_ros_msgs::SubmapList& submap_list);
 
   void publishUpdatedFrontiers();
 

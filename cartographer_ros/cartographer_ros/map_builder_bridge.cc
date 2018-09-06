@@ -102,7 +102,9 @@ MapBuilderBridge::MapBuilderBridge(
     : node_options_(node_options),
       map_builder_(std::move(map_builder)),
       tf_buffer_(tf_buffer),
-      optimizations_performed_(0) {
+      optimizations_performed_(0),
+      frontier_detector_(true) {
+  //frontier_detector_.InitPublisher();
   map_builder_->pose_graph()->SetGlobalSlamOptimizationCallback(
       std::bind(&MapBuilderBridge::OnGlobalSlamResult, this));
 }
@@ -225,6 +227,7 @@ cartographer_ros_msgs::SubmapList MapBuilderBridge::GetSubmapList() {
     submap_entry.pose = ToGeometryMsgPose(submap_id_pose.data.pose);
     submap_list.submap.push_back(submap_entry);
   }
+  //frontier_detector_.handleNewSubmapList(submap_list);
   return submap_list;
 }
 
@@ -511,13 +514,28 @@ void MapBuilderBridge::OnLocalSlamResult(
                                              std::move(range_data_in_local)});
   absl::MutexLock lock(&mutex_);
   local_slam_data_[trajectory_id] = std::move(local_slam_data);
-  /*if (result) {
-    for (const auto& submap : insertion_result->insertion_submaps) {
-      proto::SubmapQuery::Response response;
-      submap->ToResponseProto({}, response);
+  /*if (insertion_result) {
+    for (const auto& submap_id : insertion_result->insertion_submap_ids) {
+      auto submap_data = map_builder_->pose_graph()->GetSubmapData(submap_id);
+      cartographer::mapping::proto::SubmapQuery::Response response_proto;
+      submap_data.submap->ToResponseProto({}, &response_proto);
+      auto response = std::make_shared<::cartographer::io::SubmapTextures>();
+      response->version = response_proto.submap_version();
+      for (const auto& texture_proto : response_proto.textures()) {
+        const std::string compressed_cells = texture_proto.cells();
+        response->textures.emplace_back(
+            ::cartographer::io::SubmapTexture{
+                ::cartographer::io::UnpackTextureData(
+                    compressed_cells, texture_proto.width(), texture_proto.height()),
+                texture_proto.width(), texture_proto.height(), texture_proto.resolution(),
+                cartographer::transform::ToRigid3(texture_proto.slice_pose())});
+      }
+      //LOG(INFO) << "updating submap " << submap_id.submap_index << "with version " << response->version;
+      frontier_detector_.handleNewSubmapTexture(submap_id, response);
     }
-  }
-  frontier_detector_.handleNewSubmapTexture()*/
+    frontier_detector_.handleNewSubmapList(GetSubmapList());
+    frontier_detector_.publishUpdatedFrontiers();
+  }*/
 }
 
 }  // namespace cartographer_ros

@@ -7,19 +7,22 @@ namespace frontier {
 
 Detector::Detector(const bool publish)
     : last_optimization_epoch_(-1), publish_(publish) {
-  if (publish_)
-    frontier_publisher_ =
-        ros::NodeHandle().advertise<visualization_msgs::Marker>(
-            "frontier_marker", 1, true);
+  if (publish_) InitPublisher();
+}
+
+void Detector::InitPublisher() {
+  frontier_publisher_ =
+      ros::NodeHandle().advertise<visualization_msgs::Marker>(
+          "frontier_marker", 3, true);
 }
 
 void Detector::handleNewSubmapList(
-    const cartographer_ros_msgs::SubmapList::ConstPtr& submap_list) {
+    const cartographer_ros_msgs::SubmapList& submap_list) {
   // last_submap_list_ = submap_list;
   std::unique_lock<std::mutex> lock(mutex_);
   submap_poses_.clear();
 
-  for (const auto& entry : submap_list->submap) {
+  for (const auto& entry : submap_list.submap) {
     const cartographer::mapping::SubmapId submap_id{entry.trajectory_id,
                                                     entry.submap_index};
     submap_poses_.emplace(
@@ -27,8 +30,8 @@ void Detector::handleNewSubmapList(
         std::forward_as_tuple(std::make_pair(
             entry.submap_version, cartographer_ros::ToRigid3d(entry.pose))));
   }
-  if (submap_list->optimizations_performed != last_optimization_epoch_) {
-    last_optimization_epoch_ = submap_list->optimizations_performed;
+  if (submap_list.optimizations_performed != last_optimization_epoch_ ) {
+    last_optimization_epoch_ = submap_list.optimizations_performed;
     lock.unlock();
     if (publish_) publishUpdatedFrontiers();
   }
@@ -102,9 +105,12 @@ void Detector::publishUpdatedFrontiers() {
     const int submap_i_version = submap_i.second.first;
     if (submap_textures_.count(id_i) == 0 ||
         submap_i_version != submap_textures_.at(id_i)->version) {
+      LOG(INFO) << "A aborting because " << id_i.submap_index <<
+      "is out of date, submap_textures count:" << submap_textures_.count(id_i);
+      if (submap_textures_.count(id_i)) LOG(INFO) << " have version " << submap_textures_.at(id_i)->version
+      << " want version " << submap_i_version;
       return;  // let's wait until we fetch that submap
     }
-    if (!submap_textures_.count(id_i)) return;
     auto& frontier_cells = submap_frontier_cells_.at(id_i);
     const auto& submap_i_texture = submap_textures_.at(id_i)->textures.at(1);
     const auto& submap_i_pose = submap_i.second.second;
@@ -143,7 +149,10 @@ void Detector::publishUpdatedFrontiers() {
 
       const auto validate_submap =
           [&](const cartographer::mapping::SubmapId& id_j) {
-            if (!submap_textures_.count(id_j)) return;
+            if (!submap_textures_.count(id_j)) {
+             LOG(INFO) << "B aborting because submap " << id_j << " is missing";
+             return;
+            }
             const auto& submap_j_texture =
                 submap_textures_.at(id_j)->textures.at(1);
             const auto& submap_j_pose = submap_poses_.at(id_j).second;
@@ -193,6 +202,7 @@ void Detector::publishUpdatedFrontiers() {
     }
   }
 
+  //LOG(INFO) << "success!";
   frontier_publisher_.publish(frontier_marker);
 }
 
@@ -270,7 +280,7 @@ void Detector::handleNewSubmapTexture(
     new_texture->textures.push_back(frontier_texture);
   }
 
-  if (publish_) publishUpdatedFrontiers();
+  //if (publish_) publishUpdatedFrontiers();
 }
 
 }  // namespace frontier

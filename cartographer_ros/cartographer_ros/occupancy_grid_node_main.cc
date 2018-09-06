@@ -105,7 +105,7 @@ Node::Node(const double resolution, const double publish_period_sec)
 
 void Node::HandleSubmapList(
     const cartographer_ros_msgs::SubmapList::ConstPtr& msg) {
-  frontier_detector_.handleNewSubmapList(msg);
+  frontier_detector_.handleNewSubmapList(*msg);
   absl::MutexLock locker(&mutex_);
 
   // Keep track of submap IDs that don't appear in the message anymore.

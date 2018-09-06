@@ -154,6 +154,7 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
   }
 
   ros::AsyncSpinner async_spinner(kSingleThreaded);
+  //async_spinner.start();
   rosgraph_msgs::Clock clock;
   auto clock_republish_timer = node.node_handle()->createWallTimer(
       ::ros::WallDuration(kClockPublishFrequencySec),
