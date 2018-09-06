@@ -103,8 +103,8 @@ MapBuilderBridge::MapBuilderBridge(
       map_builder_(std::move(map_builder)),
       tf_buffer_(tf_buffer),
       optimizations_performed_(0),
-      frontier_detector_(true) {
-  //frontier_detector_.InitPublisher();
+      frontier_detector_(false) {
+  frontier_detector_.InitPublisher();
   map_builder_->pose_graph()->SetGlobalSlamOptimizationCallback(
       std::bind(&MapBuilderBridge::OnGlobalSlamResult, this));
 }
@@ -514,7 +514,7 @@ void MapBuilderBridge::OnLocalSlamResult(
                                              std::move(range_data_in_local)});
   absl::MutexLock lock(&mutex_);
   local_slam_data_[trajectory_id] = std::move(local_slam_data);
-  /*if (insertion_result) {
+  if (insertion_result) {
     for (const auto& submap_id : insertion_result->insertion_submap_ids) {
       auto submap_data = map_builder_->pose_graph()->GetSubmapData(submap_id);
       cartographer::mapping::proto::SubmapQuery::Response response_proto;
@@ -534,8 +534,8 @@ void MapBuilderBridge::OnLocalSlamResult(
       frontier_detector_.handleNewSubmapTexture(submap_id, response);
     }
     frontier_detector_.handleNewSubmapList(GetSubmapList());
-    frontier_detector_.publishUpdatedFrontiers();
-  }*/
+    //frontier_detector_.publishUpdatedFrontiers();
+  }
 }
 
 }  // namespace cartographer_ros

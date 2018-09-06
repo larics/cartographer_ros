@@ -122,7 +122,6 @@ class MapBuilderBridge {
   std::unordered_map<int, size_t> trajectory_to_highest_marker_id_;
 
   frontier::Detector frontier_detector_;
-  std::map<cartographer::mapping::SubmapId, int> frontier_versions_;
 };
 
 }  // namespace cartographer_ros
