@@ -149,10 +149,6 @@ void Detector::publishUpdatedFrontiers() {
 
       const auto validate_submap =
           [&](const cartographer::mapping::SubmapId& id_j) {
-            if (!submap_textures_.count(id_j)) {
-             LOG(INFO) << "B aborting because submap " << id_j << " is missing";
-             return;
-            }
             const auto& submap_j_texture =
                 submap_textures_.at(id_j)->textures.at(1);
             const auto& submap_j_pose = submap_poses_.at(id_j).second;
@@ -176,6 +172,14 @@ void Detector::publishUpdatedFrontiers() {
           };
 
       if (submap_hint != nullptr) {
+        if (submap_textures_.count(*submap_hint) == 0 ||
+            submap_poses_.at(*submap_hint).first != submap_textures_.at(*submap_hint)->version) {
+          LOG(INFO) << "A aborting because " << submap_hint->submap_index <<
+                    "is out of date, submap_textures count:" << submap_textures_.count(*submap_hint);
+          if (submap_textures_.count(*submap_hint)) LOG(INFO) << " have version " << submap_textures_.at(*submap_hint)->version
+                                                      << " want version " << submap_poses_.at(*submap_hint).first;
+          return;  // let's wait until we fetch that submap
+        }
         if (submap_poses_.count(*submap_hint))
           validate_submap(*submap_hint);
         else
@@ -185,6 +189,14 @@ void Detector::publishUpdatedFrontiers() {
       if (ok)
         for (const auto& submap_j : submap_poses_) {
           if (id_i == submap_j.first) continue;
+          if (submap_textures_.count(submap_j.first) == 0 ||
+              submap_poses_.at(submap_j.first).first != submap_textures_.at(submap_j.first)->version) {
+            LOG(INFO) << "A aborting because " << submap_j.first.submap_index <<
+                      "is out of date, submap_textures count:" << submap_textures_.count(submap_j.first);
+            if (submap_textures_.count(submap_j.first)) LOG(INFO) << " have version " << submap_textures_.at(submap_j.first)->version
+                                                                << " want version " << submap_poses_.at(submap_j.first).first;
+            return;  // let's wait until we fetch that submap
+          }
           validate_submap(submap_j.first);
           if (!ok) {
             submap_hint = absl::make_unique<cartographer::mapping::SubmapId>(
