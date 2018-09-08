@@ -2,294 +2,144 @@
 #include <cartographer/mapping/2d/map_limits.h>
 #include <cartographer_ros/frontier_detection.h>
 #include <cartographer_ros/msg_conversion.h>
+#include <visualization_msgs/MarkerArray.h>
 
 namespace frontier {
 
-Detector::Detector(const bool publish)
-    : last_optimization_epoch_(-1), publish_(publish) {
+Detector::Detector(cartographer::mapping::PoseGraph2D* const pose_graph, const bool publish)
+    : last_optimization_epoch_(-1), publish_(publish), pose_graph_(pose_graph) {
   if (publish_) InitPublisher();
 }
 
 void Detector::InitPublisher() {
   frontier_publisher_ =
-      ros::NodeHandle().advertise<visualization_msgs::Marker>(
+      ros::NodeHandle().advertise<visualization_msgs::MarkerArray>(
           "frontier_marker", 3, true);
 }
 
-void Detector::handleNewSubmapList(
-    const cartographer_ros_msgs::SubmapList& submap_list) {
-  // last_submap_list_ = submap_list;
-  std::unique_lock<std::mutex> lock(mutex_);
-  submap_poses_.clear();
-
-  for (const auto& entry : submap_list.submap) {
-    const cartographer::mapping::SubmapId submap_id{entry.trajectory_id,
-                                                    entry.submap_index};
-    submap_poses_.emplace(
-        std::piecewise_construct, std::forward_as_tuple(submap_id),
-        std::forward_as_tuple(std::make_pair(
-            entry.submap_version, cartographer_ros::ToRigid3d(entry.pose))));
-  }
-  if (submap_list.optimizations_performed != last_optimization_epoch_ ) {
-    last_optimization_epoch_ = submap_list.optimizations_performed;
-    lock.unlock();
-    if (publish_) publishUpdatedFrontiers();
-  }
-}
-
-namespace {
-
-inline Eigen::Array2i GetCellIndex(
-    const cartographer::transform::Rigid3d& submap_pose,
-    const cartographer::transform::Rigid3d& global,
-    const cartographer::io::SubmapTexture& texture) {
-  // Index values are row major and the top left has Eigen::Array2i::Zero()
-  // and contains (centered_max_x, centered_max_y). We need to flip and
-  // rotate.
-  const auto point_local =
-      (texture.slice_pose.inverse() * submap_pose.inverse() * global)
-          .translation();
-  return Eigen::Array2i(cartographer::common::RoundToInt(
-                            (-point_local.x() / texture.resolution - 0.5)),
-                        cartographer::common::RoundToInt(
-                            (-point_local.y() / texture.resolution - 0.5)));
-}
-inline cartographer::transform::Rigid3d GetGlobal(
-    const cartographer::transform::Rigid3d submap_pose,
-    const Eigen::Array2i& cell_index,
-    const cartographer::io::SubmapTexture& texture) {
-  // Index values are row major and the top left has Eigen::Array2i::Zero()
-  // and contains (centered_max_x, centered_max_y). We need to flip and
-  // rotate.
-  return submap_pose * texture.slice_pose *
-         cartographer::transform::Rigid3d::Translation(
-             {-(cell_index[0] + 0.5) * texture.resolution,
-              -(cell_index[1] + 0.5) * texture.resolution, 0});
-}
-
-inline Eigen::Array2i FromFlatIndex(
-    const int flat_index, const cartographer::io::SubmapTexture& texture) {
-  return {flat_index / texture.width, flat_index % texture.width};
-}
-
-inline int ToFlatIndex(const Eigen::Array2i& cell_index,
-                       const cartographer::io::SubmapTexture& texture) {
-  return cell_index[0] * texture.width + cell_index[1];
-}
-
-bool Contains(const Eigen::Array2i& cell_index,
-              const cartographer::io::SubmapTexture& texture) {
-  return (Eigen::Array2i(0, 0) <= cell_index).all() &&
-         (cell_index < Eigen::Array2i(texture.height, texture.width)).all();
-}
-
-}  // namespace
-
 void Detector::publishUpdatedFrontiers() {
-  visualization_msgs::Marker frontier_marker;
-  frontier_marker.header.frame_id = "map";
-  frontier_marker.pose.orientation.w = 1.0;
-  frontier_marker.type = visualization_msgs::Marker::POINTS;
-  frontier_marker.scale.x = 0.05;
-  frontier_marker.scale.y = 0.05;
-  frontier_marker.color.r = 1.0;
-  frontier_marker.color.a = 1.0;
+  visualization_msgs::MarkerArray frontier_markers;
 
   int i = 0;
   std::unique_lock<std::mutex> lock(mutex_);
-  for (const auto& submap_i : submap_poses_) {
+  const auto all_submap_data = pose_graph_->GetAllSubmapData();
+  for (const auto& submap_data_i : all_submap_data) {
+    Submap s_i(submap_data_i.id, submap_data_i.data);
+
+    visualization_msgs::Marker frontier_marker;
+    frontier_marker.header.frame_id = "map";
+    frontier_marker.pose.orientation.w = 1.0;
+    frontier_marker.type = visualization_msgs::Marker::POINTS;
+    frontier_marker.scale.x = 0.05;
+    frontier_marker.scale.y = 0.05;
+    frontier_marker.color.r = 1.0;
+    frontier_marker.color.a = 1.0;
+    frontier_marker.ns = std::to_string(s_i.id.submap_index);
     i++;
-    // if (i==2)
-    // break;
-    const auto& id_i = submap_i.first;
-    const int submap_i_version = submap_i.second.first;
-    if (submap_textures_.count(id_i) == 0 ||
-        submap_i_version != submap_textures_.at(id_i)->version) {
-      LOG(INFO) << "A aborting because " << id_i.submap_index <<
-      "is out of date, submap_textures count:" << submap_textures_.count(id_i);
-      if (submap_textures_.count(id_i)) LOG(INFO) << " have version " << submap_textures_.at(id_i)->version
-      << " want version " << submap_i_version;
-      return;  // let's wait until we fetch that submap
-    }
-    auto& frontier_cells = submap_frontier_cells_.at(id_i);
-    const auto& submap_i_texture = submap_textures_.at(id_i)->textures.at(1);
-    const auto& submap_i_pose = submap_i.second.second;
 
-    /*
-    std_msgs::ColorRGBA color;
-    color.r = 1.0;
-    color.a = 1.0;
-    geometry_msgs::Point frontier_point;
-    frontier_point.x = submap_i_pose.translation().x();
-    frontier_point.y = submap_i_pose.translation().y();
-    frontier_point.z = submap_i_pose.translation().z();
-    frontier_marker.points.push_back(frontier_point);
-    frontier_marker.colors.push_back(color);
-
-    color.g = 1.0;
-    cartographer::transform::Rigid3d pose = submap_i_pose *
-    submap_i_texture.slice_pose *
-        cartographer::transform::Rigid3d::Translation({
-                                                            -0.5 *
-    submap_i_texture.resolution,
-                                                            -(submap_i_texture.width
-    - 1 + 0.5) * submap_i_texture.resolution, 0}); frontier_point.x =
-    pose.translation().x(); frontier_point.y = pose.translation().y();
-    frontier_point.z = pose.translation().z();
-    frontier_marker.points.push_back(frontier_point);
-    frontier_marker.colors.push_back(color);
-    continue;*/
-
+    auto& frontier_cells = submap_frontier_cells_.at(s_i.id);
     for (auto& frontier_cell : frontier_cells) {
-      const auto global =
-          GetGlobal(submap_i_pose, frontier_cell.first, submap_i_texture);
+
+      const auto global_position = s_i.pose * frontier_cell.first;
       auto& submap_hint = frontier_cell.second;
 
       bool ok = true;
 
-      const auto validate_submap =
-          [&](const cartographer::mapping::SubmapId& id_j) {
-            const auto& submap_j_texture =
-                submap_textures_.at(id_j)->textures.at(1);
-            const auto& submap_j_pose = submap_poses_.at(id_j).second;
 
-            const auto cell_index =
-                GetCellIndex(submap_j_pose, global, submap_j_texture);
-            const int dx[]{-1, -1, -1, 0, 0, 0, 1, 1, 1};
-            const int dy[]{-1, 0, -1, -1, 0, 1, -1, 0, 1};
-            for (int i = 4; i < 5; i++) {
-              const Eigen::Array2i cell_index_d{cell_index[0] + dx[i],
-                                                cell_index[1] + dy[i]};
-              const auto flat_index = ToFlatIndex(cell_index, submap_j_texture);
-              if (Contains(cell_index, submap_j_texture)) {
-                unsigned char intensity = static_cast<unsigned char>(
-                    submap_j_texture.pixels.intensity.at(flat_index));
-                unsigned char alpha = static_cast<unsigned char>(
-                    submap_j_texture.pixels.alpha.at(flat_index));
-                if (intensity == 255 || alpha == 255) ok = false;
-              }
-            }
-          };
-
-      if (submap_hint != nullptr) {
-        if (submap_textures_.count(*submap_hint) == 0 ||
-            submap_poses_.at(*submap_hint).first != submap_textures_.at(*submap_hint)->version) {
-          LOG(INFO) << "A aborting because " << submap_hint->submap_index <<
-                    "is out of date, submap_textures count:" << submap_textures_.count(*submap_hint);
-          if (submap_textures_.count(*submap_hint)) LOG(INFO) << " have version " << submap_textures_.at(*submap_hint)->version
-                                                      << " want version " << submap_poses_.at(*submap_hint).first;
-          return;  // let's wait until we fetch that submap
+      if (submap_hint != cartographer::mapping::SubmapId{-1, -1}) {
+        if (!all_submap_data.Contains(submap_hint)) {
+          submap_hint = {-1, -1};
+        } else {
+          if (Submap(submap_hint, all_submap_data.at(submap_hint)).is_known(global_position)) ok = false;
         }
-        if (submap_poses_.count(*submap_hint))
-          validate_submap(*submap_hint);
-        else
-          submap_hint = nullptr;
+        if (ok) submap_hint = {-1, -1};
+      }
+
+      cartographer::mapping::SubmapId previous_submap_id{s_i.id.trajectory_id, s_i.id.submap_index - 1};
+      cartographer::mapping::SubmapId next_submap_id{s_i.id.trajectory_id, s_i.id.submap_index + 1};
+      if (ok) {
+        const auto previous_submap = all_submap_data.find(previous_submap_id);
+        if (previous_submap != all_submap_data.end())
+          if (Submap(previous_submap_id, previous_submap->data).is_known(global_position)) {
+            ok = false;
+            submap_hint = previous_submap_id;
+          }
+      }
+      if (ok) {
+        const auto next_submap = all_submap_data.find(next_submap_id);
+        if (next_submap != all_submap_data.end())
+          if (Submap(next_submap_id, next_submap->data).is_known(global_position)) {
+            ok = false;
+            submap_hint = next_submap_id;
+          }
       }
 
       if (ok)
-        for (const auto& submap_j : submap_poses_) {
-          if (id_i == submap_j.first) continue;
-          if (submap_textures_.count(submap_j.first) == 0 ||
-              submap_poses_.at(submap_j.first).first != submap_textures_.at(submap_j.first)->version) {
-            LOG(INFO) << "A aborting because " << submap_j.first.submap_index <<
-                      "is out of date, submap_textures count:" << submap_textures_.count(submap_j.first);
-            if (submap_textures_.count(submap_j.first)) LOG(INFO) << " have version " << submap_textures_.at(submap_j.first)->version
-                                                                << " want version " << submap_poses_.at(submap_j.first).first;
-            return;  // let's wait until we fetch that submap
-          }
-          validate_submap(submap_j.first);
-          if (!ok) {
-            submap_hint = absl::make_unique<cartographer::mapping::SubmapId>(
-                submap_j.first);
-            break;
+        for (const auto& submap_data_j : all_submap_data) {
+          const Submap s_j(submap_data_j.id, submap_data_j.data);
+
+          if (s_j.id == s_i.id || s_j.id == previous_submap_id || s_j.id == next_submap_id) continue;
+
+          if (s_j.is_known(global_position)) {
+            ok = false;
+            submap_hint = s_j.id;
           }
         }
+
       if (ok) {
+        submap_hint = {-1, -1};
         geometry_msgs::Point frontier_point;
-        frontier_point.x = global.translation().x();
-        frontier_point.y = global.translation().y();
-        frontier_point.z = global.translation().z();
+        frontier_point.x = global_position.x();
+        frontier_point.y = global_position.y();
+        frontier_point.z = global_position.z();
         frontier_marker.points.push_back(frontier_point);
       }
     }
+    frontier_markers.markers.push_back(frontier_marker);
   }
 
-  //LOG(INFO) << "success!";
-  frontier_publisher_.publish(frontier_marker);
+  frontier_publisher_.publish(frontier_markers);
 }
 
-void Detector::handleNewSubmapTexture(
-    const cartographer::mapping::SubmapId& id,
-    const std::shared_ptr<cartographer::io::SubmapTextures>& new_texture) {
-  auto texture_filtered =
-      cartographer::io::SubmapTexture(new_texture->textures.at(0));
-  auto frontier_texture =
-      cartographer::io::SubmapTexture(new_texture->textures.at(0));
+void Detector::handleSubmapUpdate(const cartographer::mapping::SubmapId& id_i) {
 
-  for (int i = 0; i < texture_filtered.pixels.intensity.size(); i++) {
-    char& intensity = texture_filtered.pixels.intensity.at(i);
-    char& alpha = texture_filtered.pixels.alpha.at(i);
-    // unsigned char add = std::min((unsigned int)255, (unsigned
-    // int)(submap_texture.pixels.intensity[i]) + (unsigned
-    // int)(submap_texture.pixels.alpha[i]));
-    if (alpha > 0) {
-      alpha = 255;
-    }
-    if (intensity > 0) {
-      if (intensity < 15)
-        intensity = 0;
-      else
-        intensity = 255;
-    }
-  }
-  const int w = texture_filtered.width;
-  const int h = texture_filtered.height;
-  auto is_unknown = [&texture_filtered](int index) {
-    return texture_filtered.pixels.intensity.at(index) == 0 &&
-           texture_filtered.pixels.alpha.at(index) == 0;
-  };
-  auto is_free = [&texture_filtered](int index) {
-    return texture_filtered.pixels.intensity.at(index) == (char)255;
-  };
-  auto is_in_limits = [&texture_filtered](int index) {
-    return (index >= 0) && (index < texture_filtered.pixels.intensity.size());
-  };
-  std::vector<std::pair<Eigen::Array2i,
-                        std::unique_ptr<cartographer::mapping::SubmapId>>>
-      submap_frontier_cells;
-  for (int i = 0; i < texture_filtered.pixels.intensity.size(); i++) {
-    frontier_texture.pixels.intensity.at(i) = 0;
-    frontier_texture.pixels.alpha.at(i) = 0;
-    if (is_unknown(i)) {
+  const auto submap_data_i = pose_graph_->GetSubmapData(id_i);
+
+  const auto s_i = Submap(id_i, submap_data_i);
+
+  std::unique_lock<std::mutex> lock(mutex_);
+  auto& submap_frontier_cells = submap_frontier_cells_[id_i];
+  submap_frontier_cells.clear();
+
+  Eigen::Array2i offset;
+  cartographer::mapping::CellLimits cell_limits;
+  s_i.grid.ComputeCroppedLimits(&offset, &cell_limits);
+
+  const auto local_pose_inverse = s_i.submap.local_pose().inverse();
+
+  for (const Eigen::Array2i& xy_index_without_offset : cartographer::mapping::XYIndexRangeIterator(cell_limits)) {
+    const Eigen::Array2i& xy_index = xy_index_without_offset + offset;
+    if (s_i.is_unknown(xy_index)) {
       int free_neighbours = 0;
       int unknown_neighbours = 0;
-      auto check_neighbour = [&](int index) {
-        if (is_in_limits(index) && is_unknown(index)) unknown_neighbours++;
-        if (is_in_limits(index) && is_free(index)) free_neighbours++;
+      auto check_neighbour = [&](const Eigen::Array2i& other_xy_index) {
+        if (s_i.is_unknown(other_xy_index)) unknown_neighbours++;
+        if (s_i.is_free(other_xy_index)) free_neighbours++;
       };
-      check_neighbour(i + 1);
-      check_neighbour(i - 1);
-      check_neighbour(i + w);
-      check_neighbour(i + w + 1);
-      check_neighbour(i + w - 1);
-      check_neighbour(i - w);
-      check_neighbour(i - w + 1);
-      check_neighbour(i - w - 1);
+      check_neighbour(xy_index + Eigen::Array2i{ 0,  1});
+      check_neighbour(xy_index + Eigen::Array2i{ 0, -1});
+      check_neighbour(xy_index + Eigen::Array2i{ 1,  0});
+      check_neighbour(xy_index + Eigen::Array2i{-1,  0});
+      check_neighbour(xy_index + Eigen::Array2i{ 1,  1});
+      check_neighbour(xy_index + Eigen::Array2i{ 1, -1});
+      check_neighbour(xy_index + Eigen::Array2i{-1,  1});
+      check_neighbour(xy_index + Eigen::Array2i{-1, -1});
       if (free_neighbours >= 3 && unknown_neighbours >= 3) {
-        frontier_texture.pixels.intensity.at(i) = 255;
-        frontier_texture.pixels.alpha.at(i) = 255;
         submap_frontier_cells.push_back(
-            std::make_pair(FromFlatIndex(i, frontier_texture), nullptr));
+            std::make_pair(local_pose_inverse * (Eigen::Vector3d() << s_i.limits.GetCellCenter(xy_index).cast<double>(), 0).finished(),
+                cartographer::mapping::SubmapId{-1, -1}));
       }
     }
-  }
-
-  {
-    std::unique_lock<std::mutex> lock(mutex_);
-    submap_frontier_cells_[id] = std::move(submap_frontier_cells);
-    submap_textures_[id] = new_texture;
-    new_texture->textures.push_back(texture_filtered);
-    new_texture->textures.push_back(frontier_texture);
   }
 
   //if (publish_) publishUpdatedFrontiers();

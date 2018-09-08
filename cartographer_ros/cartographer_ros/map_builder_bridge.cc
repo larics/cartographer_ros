@@ -105,8 +105,7 @@ MapBuilderBridge::MapBuilderBridge(
       map_builder_(std::move(map_builder)),
       tf_buffer_(tf_buffer),
       optimizations_performed_(0),
-      frontier_detector_(false) {
-  frontier_detector_.InitPublisher();
+      frontier_detector_(static_cast<cartographer::mapping::PoseGraph2D*>(map_builder_->pose_graph()), true) {
   map_builder_->pose_graph()->SetGlobalSlamOptimizationCallback(
       std::bind(&MapBuilderBridge::OnGlobalSlamResult, this));
 }
@@ -518,54 +517,8 @@ void MapBuilderBridge::OnLocalSlamResult(
   local_slam_data_[trajectory_id] = std::move(local_slam_data);
   if (insertion_result) {
     for (const auto& submap_id : insertion_result->insertion_submap_ids) {
-      auto submap_data = map_builder_->pose_graph()->GetSubmapData(submap_id);
-      auto response = std::make_shared<::cartographer::io::SubmapTextures>();
-      response->version = submap_data.submap->num_range_data();
-      response->textures.emplace_back();
-      auto& texture = response->textures.back();
-      auto& pixels = texture.pixels;
-      auto grid = static_cast<const cartographer::mapping::ProbabilityGrid*>(static_cast<const cartographer::mapping::Submap2D*>(submap_data.submap.get())->grid());
-
-
-      Eigen::Array2i offset;
-      cartographer::mapping::CellLimits cell_limits;
-      grid->ComputeCroppedLimits(&offset, &cell_limits);
-
-      for (const Eigen::Array2i& xy_index : cartographer::mapping::XYIndexRangeIterator(cell_limits)) {
-        if (!grid->IsKnown(xy_index + offset)) {
-          pixels.intensity.push_back(0 /* unknown log odds value */);
-          pixels.alpha.push_back(0 /* alpha */);
-          continue;
-        }
-        // We would like to add 'delta' but this is not possible using a value and
-        // alpha. We use premultiplied alpha, so when 'delta' is positive we can
-        // add it by setting 'alpha' to zero. If it is negative, we set 'value' to
-        // zero, and use 'alpha' to subtract. This is only correct when the pixel
-        // is currently white, so walls will look too gray. This should be hard to
-        // detect visually for the user, though.
-        const int delta =
-            128 - cartographer::mapping::ProbabilityToLogOddsInteger(grid->GetProbability(xy_index + offset));
-        const uint8_t alpha = delta > 0 ? 0 : -delta;
-        const uint8_t value = delta > 0 ? delta : 0;
-        pixels.intensity.push_back(value);
-        pixels.alpha.push_back((value || alpha) ? alpha : 1);
-      }
-
-      texture.width = cell_limits.num_x_cells;
-      texture.height =cell_limits.num_y_cells;
-      auto limits = grid->limits();
-      const double resolution = limits.resolution();
-      texture.resolution = resolution;
-      const double max_x = limits.max().x() - resolution * offset.y();
-      const double max_y = limits.max().y() - resolution * offset.x();
-      texture.slice_pose =
-          static_cast<const cartographer::mapping::Submap2D*>(submap_data.submap.get())->local_pose().inverse() *
-              cartographer::transform::Rigid3d::Translation(Eigen::Vector3d(max_x, max_y, 0.));
-
-      //LOG(INFO) << "updating submap " << submap_id.submap_index << "with version " << response->version;
-      frontier_detector_.handleNewSubmapTexture(submap_id, response);
+      frontier_detector_.handleSubmapUpdate(submap_id);
     }
-    frontier_detector_.handleNewSubmapList(GetSubmapList());
     frontier_detector_.publishUpdatedFrontiers();
   }
 }
