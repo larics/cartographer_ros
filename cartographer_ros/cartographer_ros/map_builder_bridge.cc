@@ -503,6 +503,7 @@ visualization_msgs::MarkerArray MapBuilderBridge::GetConstraintList() {
 SensorBridge* MapBuilderBridge::sensor_bridge(const int trajectory_id) {
   return sensor_bridges_.at(trajectory_id).get();
 }
+
 void MapBuilderBridge::OnLocalSlamResult(
     const int trajectory_id, const ::cartographer::common::Time time,
     const Rigid3d local_pose,
@@ -516,25 +517,11 @@ void MapBuilderBridge::OnLocalSlamResult(
                                              std::move(range_data_in_local)});
   absl::MutexLock lock(&mutex_);
   local_slam_data_[trajectory_id] = std::move(local_slam_data);
-  if (insertion_result) {
-    for (const auto& submap_id : insertion_result->insertion_submap_ids) {
-      frontier_detector_.HandleSubmapUpdate(submap_id);
-    }
 
-    if (!frontier_detector_.CheckForOptimizationEvent()) {
-      std::vector<cartographer::mapping::SubmapId> submaps_to_update;
-      for (const auto& submap_id : insertion_result->insertion_submap_ids) {
-        submaps_to_update.push_back(submap_id);
-        const auto intersecting_submaps =
-            frontier_detector_.GetIntersectingFinishedSubmaps(submap_id);
-        submaps_to_update.insert(submaps_to_update.end(),
-                                 intersecting_submaps.begin(),
-                                 intersecting_submaps.end());
-      }
-      frontier_detector_.PublishSubmaps(submaps_to_update);
-    }
-    // frontier_detector_.publishUpdatedFrontiers();
-  }
+  if (insertion_result)
+    frontier_detector_.HandleSubmapUpdates(
+        insertion_result->insertion_submap_ids);
+  // frontier_detector_.publishUpdatedFrontiers();
 }
 
 }  // namespace cartographer_ros

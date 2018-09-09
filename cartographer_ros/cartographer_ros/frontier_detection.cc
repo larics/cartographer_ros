@@ -17,6 +17,31 @@ void Detector::InitPublisher() {
   publisher_initialized_ = true;
 }
 
+class SubmapDataCache {
+ public:
+  SubmapDataCache(const cartographer::mapping::PoseGraph2D* const pose_graph)
+      : pose_graph_(pose_graph) {}
+  cartographer::mapping::PoseGraphInterface::SubmapData& operator()(
+      const cartographer::mapping::SubmapId& id) const {
+    const auto result = std::find_if(
+        submaps_data_.begin(), submaps_data_.end(),
+        [&](const DataPair& data_pair) { return data_pair.first == id; });
+    if (result != submaps_data_.end())
+      return result->second;
+    else {
+      submaps_data_.push_back({id, pose_graph_->GetSubmapData(id)});
+      return submaps_data_.back().second;
+    }
+  }
+
+ private:
+  using DataPair =
+      std::pair<cartographer::mapping::SubmapId,
+                cartographer::mapping::PoseGraphInterface::SubmapData>;
+  mutable std::vector<DataPair> submaps_data_;
+  const cartographer::mapping::PoseGraph2D* const pose_graph_;
+};
+
 void Detector::PublishAllSubmaps(
     const cartographer::mapping::MapById<
         cartographer::mapping::SubmapId,
@@ -49,32 +74,36 @@ void Detector::PublishSubmaps(
   if (!publisher_initialized_) InitPublisher();
 
   visualization_msgs::MarkerArray frontier_markers;
-  using DataPair =
-      std::pair<cartographer::mapping::SubmapId,
-                cartographer::mapping::PoseGraphInterface::SubmapData>;
-  std::vector<DataPair> submaps_data;
 
-  // This getter caches results in the submaps_data vector.
-  const auto submap_data_getter = [&](const cartographer::mapping::SubmapId& id)
-      -> const cartographer::mapping::PoseGraphInterface::SubmapData& {
-    const auto result = std::find_if(
-        submaps_data.begin(), submaps_data.end(),
-        [&](const DataPair& data_pair) { return data_pair.first == id; });
-    if (result != submaps_data.end())
-      return result->second;
-    else {
-      submaps_data.push_back({id, pose_graph_->GetSubmapData(id)});
-      return submaps_data.back().second;
-    }
-  };
+  SubmapDataCache cache(pose_graph_);
 
   for (const auto& id_i : submap_ids) {
     // LOG(ERROR) << "publishing submap " << id_i.submap_index;
-    frontier_markers.markers.push_back(
-        CreateMarkerForSubmap(id_i, submap_data_getter));
+    frontier_markers.markers.push_back(CreateMarkerForSubmap(id_i, cache));
   }
 
   frontier_publisher_.publish(frontier_markers);
+}
+
+bool Detector::CheckForOptimizationEvent() {
+  int actual_optimizations_performed = pose_graph_->optimizations_performed();
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    if (actual_optimizations_performed != last_optimizations_performed_) {
+      last_optimizations_performed_ = actual_optimizations_performed;
+    } else
+      return false;
+  }
+  if (deferred_updates_.size()) {
+    LOG(INFO) << "deferred updates size: " << deferred_updates_.size();
+    HandleSubmapUpdates(std::move(deferred_updates_),
+                        true /* handling_deferred */);
+  }
+
+  const auto all_submap_data = pose_graph_->GetAllSubmapData();
+  RebuildTree(all_submap_data);
+  PublishAllSubmaps(all_submap_data);
+  return true;
 }
 
 template <class T>
@@ -101,6 +130,22 @@ visualization_msgs::Marker Detector::CreateMarkerForSubmap(
   std::vector<Value> intersecting_submaps;
   rt_.query(bgi::intersects(bounding_box.last_global_box),
             std::back_inserter(intersecting_submaps));
+
+  /*LOG(WARNING) << "Publishing submap " << id_i;
+  { std::ostringstream ss;
+    ss << "Active submaps: ";
+    for (const auto &active_submap : active_submaps_) {
+      ss << active_submap << " ";
+    }
+    LOG(WARNING) << ss.str();
+  }
+  { std::ostringstream ss;
+  ss << "Intersecting submaps: ";
+    for (const auto &intersecting_submap : intersecting_submaps) {
+      ss << intersecting_submap.second << " ";
+    }
+    LOG(WARNING) << ss.str();
+  }*/
 
   for (auto& frontier_cell : submap_frontier_cells) {
     const auto global_position = s_i.pose * frontier_cell.first;
@@ -185,84 +230,142 @@ Detector::GetIntersectingFinishedSubmaps(
   return result;
 }
 
-void Detector::HandleSubmapUpdate(const cartographer::mapping::SubmapId& id_i) {
-  const auto submap_data_i = pose_graph_->GetSubmapData(id_i);
+void Detector::HandleSubmapUpdates(
+    const std::vector<cartographer::mapping::SubmapId>& submap_ids,
+    const bool handling_deferred) {
+  std::vector<cartographer::mapping::SubmapId> submaps_to_update;
+  SubmapDataCache cache(pose_graph_);
+  std::vector<Submap> submaps;
 
-  const auto s_i = Submap(id_i, submap_data_i);
+  std::vector<cartographer::mapping::SubmapId> submaps_to_publish;
+  for (const auto& id_i : submap_ids) {
+    Submap submap(id_i, cache(id_i));
+    const bool more_than_two = submap_ids.size() > 1;
+    const bool second = more_than_two && id_i == submap_ids.at(1);
+    const bool unfinished = !submap.submap.insertion_finished();
 
-  std::unique_lock<std::mutex> lock(mutex_);
-  auto& submap_frontier_cells = submap_frontier_cells_[id_i];
-  submap_frontier_cells.clear();
-
-  Eigen::Array2i offset;
-  cartographer::mapping::CellLimits cell_limits;
-  s_i.grid.ComputeCroppedLimits(&offset, &cell_limits);
-
-  const auto local_pose_inverse = s_i.submap.local_pose().inverse();
-
-  for (const Eigen::Array2i& xy_index :
-       cartographer::mapping::XYIndexRangeIterator(
-           offset, Eigen::Array2i(cell_limits.num_x_cells - 1,
-                                  cell_limits.num_y_cells - 1) +
-                       offset)) {
-    if (s_i.is_unknown(xy_index)) {
-      int free_neighbours = 0;
-      int unknown_neighbours = 0;
-      auto check_neighbour = [&](const Eigen::Array2i& other_xy_index) {
-        if (s_i.is_unknown(other_xy_index)) unknown_neighbours++;
-        if (s_i.is_free(other_xy_index)) free_neighbours++;
-      };
-      check_neighbour(xy_index + Eigen::Array2i{0, 1});
-      check_neighbour(xy_index + Eigen::Array2i{0, -1});
-      check_neighbour(xy_index + Eigen::Array2i{1, 0});
-      check_neighbour(xy_index + Eigen::Array2i{-1, 0});
-      check_neighbour(xy_index + Eigen::Array2i{1, 1});
-      check_neighbour(xy_index + Eigen::Array2i{1, -1});
-      check_neighbour(xy_index + Eigen::Array2i{-1, 1});
-      check_neighbour(xy_index + Eigen::Array2i{-1, -1});
-      if (free_neighbours >= 3 && unknown_neighbours >= 3) {
-        submap_frontier_cells.push_back(std::make_pair(
-            local_pose_inverse *
-                (Eigen::Vector3d()
-                     << s_i.limits.GetCellCenter(xy_index).cast<double>(),
-                 0)
-                    .finished(),
-            cartographer::mapping::SubmapId{-1, -1}));
+    const auto deferred_iter =
+        std::find(deferred_updates_.begin(), deferred_updates_.end(), id_i);
+    const bool in_deferred = deferred_iter != deferred_updates_.end();
+    const bool in_active_submaps =
+        std::find(active_submaps_.begin(), active_submaps_.end(), id_i) !=
+        active_submaps_.end();
+    if (true || !(more_than_two && second && unfinished && in_active_submaps) ||
+        handling_deferred) {
+      submaps_to_update.push_back(id_i);
+      submaps.push_back(std::move(submap));
+      if (in_deferred) {
+        deferred_updates_.erase(deferred_iter);
+        // LOG(WARNING) << "Undeferring " << id_i << " handling_deferred " <<
+        // handling_deferred << " more_than_two " << more_than_two << " second "
+        //<< second << " unfinished " << unfinished <<  " in_active_submaps " <<
+        //in_active_submaps;
+      }
+      if (more_than_two && !unfinished && in_active_submaps) {
+        // LOG(WARNING) << "Finalizing submap " << id_i <<
+        //   ", in_deferred: " << in_deferred;
+      }
+    } else {
+      submaps_to_publish.push_back(id_i);
+      if (!in_deferred) {
+        // LOG(WARNING) << "deferring submap " << id_i;
+        deferred_updates_.push_back(id_i);
       }
     }
   }
 
-  const double max_x =
-      s_i.limits.max().x() - s_i.limits.resolution() * offset.y();
-  const double max_y =
-      s_i.limits.max().y() - s_i.limits.resolution() * offset.x();
-  const double min_x =
-      s_i.limits.max().x() -
-      s_i.limits.resolution() * (offset.y() + cell_limits.num_y_cells);
-  const double min_y =
-      s_i.limits.max().y() -
-      s_i.limits.resolution() * (offset.x() + cell_limits.num_x_cells);
+  int i = 0;
+  for (const auto& id_i : submaps_to_update) {
+    const Submap& s_i = submaps.at(i++);
+    // std::unique_lock<std::mutex> lock(mutex_);
+    auto& submap_frontier_cells = submap_frontier_cells_[id_i];
 
-  const Eigen::Vector3d p1{max_x, max_y, 0.};
-  const Eigen::Vector3d p2{min_x, min_y, 0.};
-  auto& bounding_box_info = bounding_boxes_[s_i.id];
-  bounding_box_info.local_box = std::make_pair(p1, p2);
-  bounding_box_info.last_global_box = CalculateBoundingBox(s_i);
+    submap_frontier_cells.clear();
 
-  // Keep only finished submaps in the tree in order to avoid lots of insertions
-  // and removals while the submaps are being built due to the bounding box
-  // being expanded.
-  if (s_i.submap.insertion_finished()) {
-    active_submaps_.erase(
-        std::find(active_submaps_.begin(), active_submaps_.end(), s_i.id));
-    rt_.insert(std::make_pair(bounding_box_info.last_global_box, s_i.id));
-  } else {
-    if (std::find(active_submaps_.begin(), active_submaps_.end(), s_i.id) ==
-        active_submaps_.end()) {
-      active_submaps_.push_back(s_i.id);
+    Eigen::Array2i offset;
+    cartographer::mapping::CellLimits cell_limits;
+    s_i.grid.ComputeCroppedLimits(&offset, &cell_limits);
+    const auto local_pose_inverse = s_i.submap.local_pose().inverse();
+    for (const Eigen::Array2i& xy_index :
+         cartographer::mapping::XYIndexRangeIterator(
+             offset, Eigen::Array2i(cell_limits.num_x_cells - 1,
+                                    cell_limits.num_y_cells - 1) +
+                         offset)) {
+      if (s_i.is_unknown(xy_index)) {
+        int free_neighbours = 0;
+        int unknown_neighbours = 0;
+        auto check_neighbour = [&](const Eigen::Array2i& other_xy_index) {
+          if (s_i.is_unknown(other_xy_index)) unknown_neighbours++;
+          if (s_i.is_free(other_xy_index)) free_neighbours++;
+        };
+        check_neighbour(xy_index + Eigen::Array2i{0, 1});
+        check_neighbour(xy_index + Eigen::Array2i{0, -1});
+        check_neighbour(xy_index + Eigen::Array2i{1, 0});
+        check_neighbour(xy_index + Eigen::Array2i{-1, 0});
+        check_neighbour(xy_index + Eigen::Array2i{1, 1});
+        check_neighbour(xy_index + Eigen::Array2i{1, -1});
+        check_neighbour(xy_index + Eigen::Array2i{-1, 1});
+        check_neighbour(xy_index + Eigen::Array2i{-1, -1});
+        if (free_neighbours >= 3 && unknown_neighbours >= 3) {
+          submap_frontier_cells.push_back(std::make_pair(
+              local_pose_inverse *
+                  (Eigen::Vector3d()
+                       << s_i.limits.GetCellCenter(xy_index).cast<double>(),
+                   0)
+                      .finished(),
+              cartographer::mapping::SubmapId{-1, -1}));
+        }
+      }
+    }
+
+    const double max_x =
+        s_i.limits.max().x() - s_i.limits.resolution() * offset.y();
+    const double max_y =
+        s_i.limits.max().y() - s_i.limits.resolution() * offset.x();
+    const double min_x =
+        s_i.limits.max().x() -
+        s_i.limits.resolution() * (offset.y() + cell_limits.num_y_cells);
+    const double min_y =
+        s_i.limits.max().y() -
+        s_i.limits.resolution() * (offset.x() + cell_limits.num_x_cells);
+
+    const Eigen::Vector3d p1{max_x, max_y, 0.};
+    const Eigen::Vector3d p2{min_x, min_y, 0.};
+    auto& bounding_box_info = bounding_boxes_[s_i.id];
+    bounding_box_info.local_box = std::make_pair(p1, p2);
+    bounding_box_info.last_global_box = CalculateBoundingBox(s_i);
+
+    // Keep only finished submaps in the tree in order to avoid lots of
+    // insertions and removals while the submaps are being built due to the
+    // bounding box being expanded.
+    const auto iter =
+        std::find(active_submaps_.begin(), active_submaps_.end(), s_i.id);
+    if (s_i.submap.insertion_finished()) {
+      // LOG(WARNING) << "Removing from active submaps: " << s_i.id;
+      if (iter != active_submaps_.end()) active_submaps_.erase(iter);
+      rt_.insert(std::make_pair(bounding_box_info.last_global_box, s_i.id));
+    } else {
+      if (iter == active_submaps_.end()) {
+        active_submaps_.push_back(s_i.id);
+      }
+    }
+
+    if (!handling_deferred) {
+      submaps_to_publish.push_back(id_i);
+      const auto intersecting_submaps = GetIntersectingFinishedSubmaps(id_i);
+      for (const auto& intersecting_submap : intersecting_submaps) {
+        if (std::find(submaps_to_publish.begin(), submaps_to_publish.end(),
+                      intersecting_submap) == submaps_to_publish.end())
+          submaps_to_publish.push_back(intersecting_submap);
+      }
     }
   }
 
+  if (handling_deferred) return;
+
+  if (!CheckForOptimizationEvent()) {
+    PublishSubmaps(submaps_to_publish);
+  }
   // if (publish_) publishUpdatedFrontiers();
 }
 

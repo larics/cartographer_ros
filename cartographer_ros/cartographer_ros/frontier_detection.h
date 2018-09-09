@@ -37,7 +37,9 @@ class Detector {
   void InitPublisher();
 
   // Performs local frontier edge detection.
-  void HandleSubmapUpdate(const cartographer::mapping::SubmapId& id);
+  void HandleSubmapUpdates(
+      const std::vector<cartographer::mapping::SubmapId>& submap_ids,
+      bool handling_deferred = false);
 
   void PublishAllSubmaps(const cartographer::mapping::MapById<
                          cartographer::mapping::SubmapId,
@@ -46,20 +48,7 @@ class Detector {
   void PublishSubmaps(
       const std::vector<cartographer::mapping::SubmapId>& submap_ids);
 
-  bool CheckForOptimizationEvent() {
-    int actual_optimizations_performed = pose_graph_->optimizations_performed();
-    {
-      std::unique_lock<std::mutex> lock(mutex_);
-      if (actual_optimizations_performed != last_optimizations_performed_) {
-        last_optimizations_performed_ = actual_optimizations_performed;
-      } else
-        return false;
-    }
-    const auto all_submap_data = pose_graph_->GetAllSubmapData();
-    RebuildTree(all_submap_data);
-    PublishAllSubmaps(all_submap_data);
-    return true;
-  }
+  bool CheckForOptimizationEvent();
 
   std::vector<cartographer::mapping::SubmapId> GetIntersectingFinishedSubmaps(
       const cartographer::mapping::SubmapId& id_i);
@@ -79,6 +68,7 @@ class Detector {
       std::vector<std::pair<Eigen::Vector3d,
                             cartographer::mapping::SubmapId /* submap_hint */>>>
       submap_frontier_cells_;
+  std::vector<cartographer::mapping::SubmapId> deferred_updates_;
 
   struct BoundingBoxInfo {
     std::pair<Eigen::Vector3d, Eigen::Vector3d> local_box;
