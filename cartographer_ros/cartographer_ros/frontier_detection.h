@@ -36,6 +36,7 @@ class Detector {
 
   void InitPublisher();
 
+  // Performs local frontier edge detection.
   void HandleSubmapUpdate(const cartographer::mapping::SubmapId& id);
 
   void PublishAllSubmaps(const cartographer::mapping::MapById<
@@ -47,21 +48,17 @@ class Detector {
 
   bool CheckForOptimizationEvent() {
     int actual_optimizations_performed = pose_graph_->optimizations_performed();
-    bool publish_all = false;
     {
       std::unique_lock<std::mutex> lock(mutex_);
       if (actual_optimizations_performed != last_optimizations_performed_) {
         last_optimizations_performed_ = actual_optimizations_performed;
-        publish_all = true;
-      }
+      } else
+        return false;
     }
-    if (publish_all) {
-      const auto all_submap_data = pose_graph_->GetAllSubmapData();
-      RebuildTree(all_submap_data);
-      PublishAllSubmaps(all_submap_data);
-      return true;
-    } else
-      return false;
+    const auto all_submap_data = pose_graph_->GetAllSubmapData();
+    RebuildTree(all_submap_data);
+    PublishAllSubmaps(all_submap_data);
+    return true;
   }
 
   std::vector<cartographer::mapping::SubmapId> GetIntersectingFinishedSubmaps(
