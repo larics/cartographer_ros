@@ -16,11 +16,11 @@
 
 #include "cartographer_ros/map_builder_bridge.h"
 
-#include "cartographer/mapping/2d/submap_2d.h"
-#include "cartographer/mapping/2d/probability_grid.h"
 #include "absl/memory/memory.h"
 #include "cartographer/io/color.h"
 #include "cartographer/io/proto_stream.h"
+#include "cartographer/mapping/2d/probability_grid.h"
+#include "cartographer/mapping/2d/submap_2d.h"
 #include "cartographer/mapping/pose_graph.h"
 #include "cartographer_ros/msg_conversion.h"
 #include "cartographer_ros_msgs/StatusCode.h"
@@ -105,7 +105,9 @@ MapBuilderBridge::MapBuilderBridge(
       map_builder_(std::move(map_builder)),
       tf_buffer_(tf_buffer),
       optimizations_performed_(0),
-      frontier_detector_(static_cast<cartographer::mapping::PoseGraph2D*>(map_builder_->pose_graph()), true) {
+      frontier_detector_(static_cast<cartographer::mapping::PoseGraph2D*>(
+                             map_builder_->pose_graph()),
+                         true) {
   map_builder_->pose_graph()->SetGlobalSlamOptimizationCallback(
       std::bind(&MapBuilderBridge::OnGlobalSlamResult, this));
 }
@@ -138,7 +140,8 @@ int MapBuilderBridge::AddTrajectory(
              const std::unique_ptr<
                  const ::cartographer::mapping::TrajectoryBuilderInterface::
                      InsertionResult>& insertion_result) {
-        OnLocalSlamResult(trajectory_id, time, local_pose, range_data_in_local, insertion_result);
+        OnLocalSlamResult(trajectory_id, time, local_pose, range_data_in_local,
+                          insertion_result);
       });
   LOG(INFO) << "Added trajectory with ID '" << trajectory_id << "'.";
 
@@ -228,7 +231,7 @@ cartographer_ros_msgs::SubmapList MapBuilderBridge::GetSubmapList() {
     submap_entry.pose = ToGeometryMsgPose(submap_id_pose.data.pose);
     submap_list.submap.push_back(submap_entry);
   }
-  //frontier_detector_.handleNewSubmapList(submap_list);
+  // frontier_detector_.handleNewSubmapList(submap_list);
   return submap_list;
 }
 
@@ -501,14 +504,13 @@ visualization_msgs::MarkerArray MapBuilderBridge::GetConstraintList() {
 SensorBridge* MapBuilderBridge::sensor_bridge(const int trajectory_id) {
   return sensor_bridges_.at(trajectory_id).get();
 }
-
 void MapBuilderBridge::OnLocalSlamResult(
     const int trajectory_id, const ::cartographer::common::Time time,
     const Rigid3d local_pose,
     ::cartographer::sensor::RangeData range_data_in_local,
     const std::unique_ptr<const ::cartographer::mapping::
                               TrajectoryBuilderInterface::InsertionResult>&
-    insertion_result) {
+        insertion_result) {
   std::shared_ptr<const LocalTrajectoryData::LocalSlamData> local_slam_data =
       std::make_shared<LocalTrajectoryData::LocalSlamData>(
           LocalTrajectoryData::LocalSlamData{time, local_pose,
@@ -517,9 +519,22 @@ void MapBuilderBridge::OnLocalSlamResult(
   local_slam_data_[trajectory_id] = std::move(local_slam_data);
   if (insertion_result) {
     for (const auto& submap_id : insertion_result->insertion_submap_ids) {
-      frontier_detector_.handleSubmapUpdate(submap_id);
+      frontier_detector_.HandleSubmapUpdate(submap_id);
     }
-    //frontier_detector_.publishUpdatedFrontiers();
+
+    if (!frontier_detector_.CheckForOptimizationEvent()) {
+      std::vector<cartographer::mapping::SubmapId> submaps_to_update;
+      for (const auto& submap_id : insertion_result->insertion_submap_ids) {
+        submaps_to_update.push_back(submap_id);
+        const auto intersecting_submaps =
+            frontier_detector_.GetIntersectingFinishedSubmaps(submap_id);
+        submaps_to_update.insert(submaps_to_update.end(),
+                                 intersecting_submaps.begin(),
+                                 intersecting_submaps.end());
+      }
+      frontier_detector_.PublishSubmaps(submaps_to_update);
+    }
+    // frontier_detector_.publishUpdatedFrontiers();
   }
 }
 
