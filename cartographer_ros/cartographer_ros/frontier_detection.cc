@@ -94,12 +94,6 @@ bool Detector::CheckForOptimizationEvent() {
     } else
       return false;
   }
-  if (deferred_updates_.size()) {
-    LOG(INFO) << "deferred updates size: " << deferred_updates_.size();
-    HandleSubmapUpdates(std::move(deferred_updates_),
-                        true /* handling_deferred */);
-  }
-
   const auto all_submap_data = pose_graph_->GetAllSubmapData();
   RebuildTree(all_submap_data);
   PublishAllSubmaps(all_submap_data);
@@ -231,52 +225,12 @@ Detector::GetIntersectingFinishedSubmaps(
 }
 
 void Detector::HandleSubmapUpdates(
-    const std::vector<cartographer::mapping::SubmapId>& submap_ids,
-    const bool handling_deferred) {
-  std::vector<cartographer::mapping::SubmapId> submaps_to_update;
-  SubmapDataCache cache(pose_graph_);
-  std::vector<Submap> submaps;
-
+    const std::vector<cartographer::mapping::SubmapId>& submap_ids) {
   std::vector<cartographer::mapping::SubmapId> submaps_to_publish;
+
   for (const auto& id_i : submap_ids) {
-    Submap submap(id_i, cache(id_i));
-    const bool more_than_two = submap_ids.size() > 1;
-    const bool second = more_than_two && id_i == submap_ids.at(1);
-    const bool unfinished = !submap.submap.insertion_finished();
-
-    const auto deferred_iter =
-        std::find(deferred_updates_.begin(), deferred_updates_.end(), id_i);
-    const bool in_deferred = deferred_iter != deferred_updates_.end();
-    const bool in_active_submaps =
-        std::find(active_submaps_.begin(), active_submaps_.end(), id_i) !=
-        active_submaps_.end();
-    if (true || !(more_than_two && second && unfinished && in_active_submaps) ||
-        handling_deferred) {
-      submaps_to_update.push_back(id_i);
-      submaps.push_back(std::move(submap));
-      if (in_deferred) {
-        deferred_updates_.erase(deferred_iter);
-        // LOG(WARNING) << "Undeferring " << id_i << " handling_deferred " <<
-        // handling_deferred << " more_than_two " << more_than_two << " second "
-        //<< second << " unfinished " << unfinished <<  " in_active_submaps " <<
-        //in_active_submaps;
-      }
-      if (more_than_two && !unfinished && in_active_submaps) {
-        // LOG(WARNING) << "Finalizing submap " << id_i <<
-        //   ", in_deferred: " << in_deferred;
-      }
-    } else {
-      submaps_to_publish.push_back(id_i);
-      if (!in_deferred) {
-        // LOG(WARNING) << "deferring submap " << id_i;
-        deferred_updates_.push_back(id_i);
-      }
-    }
-  }
-
-  int i = 0;
-  for (const auto& id_i : submaps_to_update) {
-    const Submap& s_i = submaps.at(i++);
+    const auto submap_data_i = pose_graph_->GetSubmapData(id_i);
+    const Submap s_i{id_i, submap_data_i};
     // std::unique_lock<std::mutex> lock(mutex_);
     auto& submap_frontier_cells = submap_frontier_cells_[id_i];
 
@@ -350,18 +304,14 @@ void Detector::HandleSubmapUpdates(
       }
     }
 
-    if (!handling_deferred) {
-      submaps_to_publish.push_back(id_i);
-      const auto intersecting_submaps = GetIntersectingFinishedSubmaps(id_i);
-      for (const auto& intersecting_submap : intersecting_submaps) {
-        if (std::find(submaps_to_publish.begin(), submaps_to_publish.end(),
-                      intersecting_submap) == submaps_to_publish.end())
-          submaps_to_publish.push_back(intersecting_submap);
-      }
+    submaps_to_publish.push_back(id_i);
+    const auto intersecting_submaps = GetIntersectingFinishedSubmaps(id_i);
+    for (const auto& intersecting_submap : intersecting_submaps) {
+      if (std::find(submaps_to_publish.begin(), submaps_to_publish.end(),
+                    intersecting_submap) == submaps_to_publish.end())
+        submaps_to_publish.push_back(intersecting_submap);
     }
   }
-
-  if (handling_deferred) return;
 
   if (!CheckForOptimizationEvent()) {
     PublishSubmaps(submaps_to_publish);

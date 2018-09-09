@@ -38,8 +38,7 @@ class Detector {
 
   // Performs local frontier edge detection.
   void HandleSubmapUpdates(
-      const std::vector<cartographer::mapping::SubmapId>& submap_ids,
-      bool handling_deferred = false);
+      const std::vector<cartographer::mapping::SubmapId>& submap_ids);
 
   void PublishAllSubmaps(const cartographer::mapping::MapById<
                          cartographer::mapping::SubmapId,
@@ -68,7 +67,6 @@ class Detector {
       std::vector<std::pair<Eigen::Vector3d,
                             cartographer::mapping::SubmapId /* submap_hint */>>>
       submap_frontier_cells_;
-  std::vector<cartographer::mapping::SubmapId> deferred_updates_;
 
   struct BoundingBoxInfo {
     std::pair<Eigen::Vector3d, Eigen::Vector3d> local_box;
