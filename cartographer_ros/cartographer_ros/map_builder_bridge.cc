@@ -519,7 +519,7 @@ void MapBuilderBridge::OnLocalSlamResult(
     for (const auto& submap_id : insertion_result->insertion_submap_ids) {
       frontier_detector_.handleSubmapUpdate(submap_id);
     }
-    frontier_detector_.publishUpdatedFrontiers();
+    //frontier_detector_.publishUpdatedFrontiers();
   }
 }
 

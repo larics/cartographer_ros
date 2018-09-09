@@ -10,6 +10,11 @@
 #include <visualization_msgs/Marker.h>
 #include <mutex>
 
+#include <boost/geometry.hpp>
+#include <boost/geometry/geometries/point.hpp>
+#include <boost/geometry/geometries/box.hpp>
+#include <boost/geometry/index/rtree.hpp>
+
 namespace frontier {
 
 //const double kFreeProbability = 0.56;
@@ -21,6 +26,8 @@ namespace frontier {
 constexpr uint16_t kFreeProbabilityValue = 18841;
 constexpr uint16_t kOccupiedProbabilityValue = 16384;
 
+namespace bg = boost::geometry;
+namespace bgi = bg::index;
 
 class Detector {
  public:
@@ -33,6 +40,12 @@ class Detector {
   void publishUpdatedFrontiers();
 
  private:
+  using Point = bg::model::point<double, 2, bg::cs::cartesian>;
+  using Box = bg::model::box<Point>;
+  using Value = std::pair<Box, cartographer::mapping::SubmapId>;
+
+  bgi::rtree<Value, bgi::linear<16, 4>> rt_;
+
   std::mutex mutex_;
 
   std::map<
@@ -93,6 +106,15 @@ class Detector {
 
   };
 
+  /*Box CalculateBoundingBox(const Submap& submap) {
+    const Eigen::Vector3d p1_global = submap.pose * submap_frontiers_[submap.id].local_bounding_box.first;
+    const Eigen::Vector3d p2_global = submap.pose * submap_frontiers_[submap.id].local_bounding_box.second;
+
+    return Box{Point(std::min(p1_global.x(), p2_global.x()),
+                        std::min(p1_global.y(), p2_global.y())),
+                  Point(std::max(p1_global.x(), p2_global.x()),
+                        std::max(p1_global.y(), p2_global.y()))};
+  }*/
 };
 
 }  // namespace frontier
