@@ -198,6 +198,7 @@ void Detector::RebuildTree(
     }
   }
 
+  // Invokes rtree's packing constructor.
   rt_ = RTree{std::move(rectangles)};
 }
 

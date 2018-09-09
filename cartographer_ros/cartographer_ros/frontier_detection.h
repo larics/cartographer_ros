@@ -111,6 +111,7 @@ class Detector {
               cartographer::transform::Rigid3d::Translation(
                   (Eigen::Vector3d() << limits.max(), 0.).finished())) */
           {};
+
     const cartographer::mapping::SubmapId& id;
     const cartographer::mapping::Submap2D& submap;
     const cartographer::mapping::Grid2D& grid;
@@ -125,6 +126,7 @@ class Detector {
     bool is_in_limits(const Eigen::Array2i& xy_index) const {
       return grid.limits().Contains(xy_index);
     }
+
     bool is_free(const Eigen::Array2i& xy_index) const {
       return is_in_limits(xy_index) &&
              grid.correspondence_cost_cells_[ToFlatIndex(xy_index)] >=
@@ -147,6 +149,9 @@ class Detector {
   };
 
   template <class T>
+  // Goes through previously edge-detected local frontier points,
+  // checks if they really are frontier points by looking in other submaps,
+  // and creates a marker which
   visualization_msgs::Marker CreateMarkerForSubmap(
       const cartographer::mapping::SubmapId& id_i,
       const T& submap_data_getter) {
@@ -160,7 +165,10 @@ class Detector {
     frontier_marker.scale.y = 0.1;
     frontier_marker.color.r = 1.0;
     frontier_marker.color.a = 1.0;
-    frontier_marker.ns = std::to_string(s_i.id.submap_index);
+    std::ostringstream ss;
+    ss << "Trajectory " << s_i.id.trajectory_id << ", submap "
+       << s_i.id.submap_index;
+    frontier_marker.ns = ss.str();
 
     auto& submap_frontier_cells = submap_frontier_cells_.at(s_i.id);
     auto& bounding_box = bounding_boxes_.at(s_i.id);
