@@ -149,104 +149,11 @@ class Detector {
   };
 
   template <class T>
-  // Goes through previously edge-detected local frontier points,
+  // Goes through previously edge-detected local frontier points in submaps,
   // checks if they really are frontier points by looking in other submaps,
-  // and creates a marker which
+  // and creates a marker containing the appropriate frontier points.
   visualization_msgs::Marker CreateMarkerForSubmap(
-      const cartographer::mapping::SubmapId& id_i,
-      const T& submap_data_getter) {
-    Submap s_i(id_i, submap_data_getter(id_i));
-
-    visualization_msgs::Marker frontier_marker;
-    frontier_marker.header.frame_id = "map";
-    frontier_marker.pose.orientation.w = 1.0;
-    frontier_marker.type = visualization_msgs::Marker::POINTS;
-    frontier_marker.scale.x = 0.1;
-    frontier_marker.scale.y = 0.1;
-    frontier_marker.color.r = 1.0;
-    frontier_marker.color.a = 1.0;
-    std::ostringstream ss;
-    ss << "Trajectory " << s_i.id.trajectory_id << ", submap "
-       << s_i.id.submap_index;
-    frontier_marker.ns = ss.str();
-
-    auto& submap_frontier_cells = submap_frontier_cells_.at(s_i.id);
-    auto& bounding_box = bounding_boxes_.at(s_i.id);
-
-    std::vector<Value> intersecting_submaps;
-    rt_.query(bgi::intersects(bounding_box.last_global_box),
-              std::back_inserter(intersecting_submaps));
-
-    for (auto& frontier_cell : submap_frontier_cells) {
-      const auto global_position = s_i.pose * frontier_cell.first;
-
-      bool ok = true;
-      auto& submap_hint = frontier_cell.second;
-
-      if (submap_hint != cartographer::mapping::SubmapId{-1, -1}) {
-        const auto& submap_data_j = submap_data_getter(submap_hint);
-        if (submap_data_j.submap == nullptr) {
-          submap_hint = {-1, -1};
-        } else {
-          if (Submap(submap_hint, submap_data_j).is_known(global_position))
-            ok = false;
-        }
-        if (ok) submap_hint = {-1, -1};
-      }
-
-      if (ok)
-        for (const auto& active_submap : active_submaps_) {
-          const cartographer::mapping::SubmapId& id_j = active_submap;
-          if (id_j == s_i.id) continue;
-          if (!bg::intersects(
-                  bounding_box.last_global_box,
-                  bounding_boxes_.at(active_submap).last_global_box))
-            continue;
-
-          const auto submap_data_j = submap_data_getter(id_j);
-          if (submap_data_j.submap == nullptr) {
-            continue;
-          }
-          const Submap s_j(id_j, submap_data_j);
-
-          if (s_j.is_known(global_position)) {
-            ok = false;
-            submap_hint = s_j.id;
-          }
-        }
-
-      if (ok) {
-        for (const auto& intersecting_submap : intersecting_submaps) {
-          const cartographer::mapping::SubmapId& id_j =
-              intersecting_submap.second;
-          if (id_j == s_i.id) continue;
-
-          const auto submap_data_j = submap_data_getter(id_j);
-          if (submap_data_j.submap == nullptr) {
-            rt_.remove(
-                std::make_pair(bounding_boxes_.at(id_j).last_global_box, id_j));
-            continue;
-          }
-          const Submap s_j(id_j, submap_data_j);
-
-          if (s_j.is_known(global_position)) {
-            ok = false;
-            submap_hint = s_j.id;
-          }
-        }
-      }
-
-      if (ok) {
-        submap_hint = {-1, -1};
-        geometry_msgs::Point frontier_point;
-        frontier_point.x = global_position.x();
-        frontier_point.y = global_position.y();
-        frontier_point.z = global_position.z();
-        frontier_marker.points.push_back(frontier_point);
-      }
-    }
-    return frontier_marker;
-  }
+      const cartographer::mapping::SubmapId& id_i, const T& submap_data_getter);
 
   Box CalculateBoundingBox(const Submap& submap) {
     auto& bounding_box_info = bounding_boxes_[submap.id];
