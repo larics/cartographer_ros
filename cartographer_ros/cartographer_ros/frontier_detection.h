@@ -96,7 +96,7 @@ class Detector {
   cartographer::mapping::PoseGraph2D* pose_graph_;
 
   struct Submap {
-    Submap(cartographer::mapping::SubmapId id,
+    Submap(const cartographer::mapping::SubmapId& id,
            const cartographer::mapping::PoseGraphInterface::SubmapData&
                submap_data)
         : id(id),
@@ -109,7 +109,7 @@ class Detector {
                   (Eigen::Vector3d() << limits.max(), 0.).finished())) */
           {};
 
-    const cartographer::mapping::SubmapId& id;
+    const cartographer::mapping::SubmapId id;
     const cartographer::mapping::Submap2D& submap;
     const cartographer::mapping::Grid2D& grid;
     const cartographer::mapping::MapLimits& limits;
