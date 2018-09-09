@@ -17,10 +17,6 @@
 #include <boost/geometry/geometries/point.hpp>
 #include <boost/geometry/index/rtree.hpp>
 
-namespace cartographer_ros {
-class MapBuilderBridge;
-}
-
 namespace frontier {
 
 // const double kFreeProbability = 0.56;
@@ -28,7 +24,6 @@ namespace frontier {
 
 // cartographer::mapping::ProbabilityToValue(kFreeProbability) 18841
 // cartographer::mapping::ProbabilityToValue(kOccupiedProbability) 16384
-
 constexpr uint16_t kFreeProbabilityValue = 18841;
 constexpr uint16_t kOccupiedProbabilityValue = 16384;
 
@@ -37,13 +32,16 @@ namespace bgi = bg::index;
 
 class Detector {
  public:
-  Detector(cartographer::mapping::PoseGraph2D* pose_graph, bool publish = true);
+  Detector(cartographer::mapping::PoseGraph2D* pose_graph);
 
   void InitPublisher();
 
   void HandleSubmapUpdate(const cartographer::mapping::SubmapId& id);
 
-  void PublishAllSubmaps();
+  void PublishAllSubmaps(const cartographer::mapping::MapById<
+                         cartographer::mapping::SubmapId,
+                         cartographer::mapping::PoseGraphInterface::SubmapData>&
+                             all_submap_data);
   void PublishSubmaps(
       const std::vector<cartographer::mapping::SubmapId>& submap_ids);
 
@@ -58,7 +56,9 @@ class Detector {
       }
     }
     if (publish_all) {
-      PublishAllSubmaps();
+      const auto all_submap_data = pose_graph_->GetAllSubmapData();
+      RebuildTree(all_submap_data);
+      PublishAllSubmaps(all_submap_data);
       return true;
     } else
       return false;
@@ -71,8 +71,9 @@ class Detector {
   using Point = bg::model::point<double, 2, bg::cs::cartesian>;
   using Box = bg::model::box<Point>;
   using Value = std::pair<Box, cartographer::mapping::SubmapId>;
+  using RTree = bgi::rtree<Value, bgi::quadratic<16, 4>>;
 
-  bgi::rtree<Value, bgi::quadratic<16, 4>> rt_;
+  RTree rt_;
 
   std::mutex mutex_;
 
@@ -92,9 +93,8 @@ class Detector {
 
   // cartographer_ros_msgs::SubmapList::ConstPtr last_submap_list_;
   ros::Publisher frontier_publisher_;
+  bool publisher_initialized_;
   int last_optimizations_performed_;
-
-  bool publish_;
 
   cartographer::mapping::PoseGraph2D* pose_graph_;
 
@@ -252,6 +252,11 @@ class Detector {
                Point(std::max(p1_global.x(), p2_global.x()),
                      std::max(p1_global.y(), p2_global.y()))};
   }
+
+  void RebuildTree(const cartographer::mapping::MapById<
+                   cartographer::mapping::SubmapId,
+                   cartographer::mapping::PoseGraphInterface::SubmapData>&
+                       all_submap_data);
 };
 
 }  // namespace frontier

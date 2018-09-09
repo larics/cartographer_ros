@@ -5,26 +5,28 @@
 
 namespace frontier {
 
-Detector::Detector(cartographer::mapping::PoseGraph2D* const pose_graph,
-                   const bool publish)
-    : last_optimizations_performed_(-1),
-      publish_(publish),
-      pose_graph_(pose_graph) {
-  if (publish_) InitPublisher();
-}
+Detector::Detector(cartographer::mapping::PoseGraph2D* const pose_graph)
+    : publisher_initialized_(false),
+      last_optimizations_performed_(-1),
+      pose_graph_(pose_graph) {}
 
 void Detector::InitPublisher() {
   frontier_publisher_ =
       ros::NodeHandle().advertise<visualization_msgs::MarkerArray>(
           "frontier_marker", 3, true);
+  publisher_initialized_ = true;
 }
 
-void Detector::PublishAllSubmaps() {
-  LOG(ERROR) << "publishing all submaps";
+void Detector::PublishAllSubmaps(
+    const cartographer::mapping::MapById<
+        cartographer::mapping::SubmapId,
+        cartographer::mapping::PoseGraphInterface::SubmapData>&
+        all_submap_data) {
+  if (!publisher_initialized_) InitPublisher();
+  // LOG(ERROR) << "publishing all submaps";
   visualization_msgs::MarkerArray frontier_markers;
 
   std::unique_lock<std::mutex> lock(mutex_);
-  const auto all_submap_data = pose_graph_->GetAllSubmapData();
   cartographer::mapping::PoseGraphInterface::SubmapData null_data{nullptr};
 
   const auto submap_data_getter = [&](const cartographer::mapping::SubmapId& id)
@@ -44,12 +46,15 @@ void Detector::PublishAllSubmaps() {
 
 void Detector::PublishSubmaps(
     const std::vector<cartographer::mapping::SubmapId>& submap_ids) {
+  if (!publisher_initialized_) InitPublisher();
+
   visualization_msgs::MarkerArray frontier_markers;
   using DataPair =
       std::pair<cartographer::mapping::SubmapId,
                 cartographer::mapping::PoseGraphInterface::SubmapData>;
   std::vector<DataPair> submaps_data;
 
+  // This getter caches results in the submaps_data vector.
   const auto submap_data_getter = [&](const cartographer::mapping::SubmapId& id)
       -> const cartographer::mapping::PoseGraphInterface::SubmapData& {
     const auto result = std::find_if(
@@ -64,7 +69,7 @@ void Detector::PublishSubmaps(
   };
 
   for (const auto& id_i : submap_ids) {
-    LOG(ERROR) << "publishing submap " << id_i.submap_index;
+    // LOG(ERROR) << "publishing submap " << id_i.submap_index;
     frontier_markers.markers.push_back(
         CreateMarkerForSubmap(id_i, submap_data_getter));
   }
@@ -149,6 +154,9 @@ void Detector::HandleSubmapUpdate(const cartographer::mapping::SubmapId& id_i) {
   bounding_box_info.local_box = std::make_pair(p1, p2);
   bounding_box_info.last_global_box = CalculateBoundingBox(s_i);
 
+  // Keep only finished submaps in the tree in order to avoid lots of insertions
+  // and removals while the submaps are being built due to the bounding box
+  // being expanded.
   if (s_i.submap.insertion_finished()) {
     active_submaps_.erase(
         std::find(active_submaps_.begin(), active_submaps_.end(), s_i.id));
@@ -161,6 +169,36 @@ void Detector::HandleSubmapUpdate(const cartographer::mapping::SubmapId& id_i) {
   }
 
   // if (publish_) publishUpdatedFrontiers();
+}
+
+void Detector::RebuildTree(
+    const cartographer::mapping::MapById<
+        cartographer::mapping::SubmapId,
+        cartographer::mapping::PoseGraphInterface::SubmapData>&
+        all_submap_data) {
+  std::unique_lock<std::mutex> lock(mutex_);
+  std::vector<Value> rectangles;
+
+  for (const auto& submap_data : all_submap_data) {
+    const auto bounding_box_iter = bounding_boxes_.find(submap_data.id);
+    if (bounding_box_iter == bounding_boxes_.end()) {
+      LOG(ERROR) << "Bounding box missing, should not happen.";
+      continue;
+    }
+    auto& bounding_box_info = bounding_box_iter->second;
+    const Submap s_i(submap_data.id, submap_data.data);
+    bounding_box_info.last_global_box = CalculateBoundingBox(s_i);
+
+    if (std::find(active_submaps_.begin(), active_submaps_.end(), s_i.id) ==
+        active_submaps_.end()) {
+      rectangles.emplace_back(
+          std::piecewise_construct,
+          std::forward_as_tuple(bounding_box_info.last_global_box),
+          std::forward_as_tuple(s_i.id));
+    }
+  }
+
+  rt_ = RTree{std::move(rectangles)};
 }
 
 }  // namespace frontier
