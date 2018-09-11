@@ -40,10 +40,7 @@ class Detector {
   void HandleSubmapUpdates(
       const std::vector<cartographer::mapping::SubmapId>& submap_ids);
 
-  void PublishAllSubmaps(const cartographer::mapping::MapById<
-                         cartographer::mapping::SubmapId,
-                         cartographer::mapping::PoseGraphInterface::SubmapData>&
-                             all_submap_data);
+  void PublishAllSubmaps();
   void PublishSubmaps(
       const std::vector<cartographer::mapping::SubmapId>& submap_ids);
 
@@ -90,55 +87,113 @@ class Detector {
         : id(id),
           submap(*static_cast<const cartographer::mapping::Submap2D*>(
               submap_data.submap.get())),
-          grid(*submap.grid()),
-          limits(grid.limits()),
-          pose(submap_data.pose) /* * submap.local_pose().inverse() *
+          pose(submap_data.pose), /* * submap.local_pose().inverse() *
               cartographer::transform::Rigid3d::Translation(
                   (Eigen::Vector3d() << limits.max(), 0.).finished())) */
-          {};
+          to_local_submap_position(submap.local_pose() * pose.inverse()){};
 
     const cartographer::mapping::SubmapId id;
     const cartographer::mapping::Submap2D& submap;
-    const cartographer::mapping::Grid2D& grid;
-    const cartographer::mapping::MapLimits& limits;
     const cartographer::transform::Rigid3d pose;
+    const cartographer::transform::Rigid3d to_local_submap_position;
+
+    const cartographer::mapping::Grid2D& grid() const { return *submap.grid(); }
+    const cartographer::mapping::MapLimits& limits() const {
+      return submap.grid()->limits();
+    }
 
     int ToFlatIndex(const Eigen::Array2i& cell_index) const {
-      return grid.limits_.cell_limits().num_x_cells * cell_index.y() +
+      return limits().cell_limits().num_x_cells * cell_index.y() +
              cell_index.x();
     }
 
     bool is_in_limits(const Eigen::Array2i& xy_index) const {
-      return grid.limits().Contains(xy_index);
+      return limits().Contains(xy_index);
     }
 
     bool is_free(const Eigen::Array2i& xy_index) const {
       return is_in_limits(xy_index) &&
-             grid.correspondence_cost_cells_[ToFlatIndex(xy_index)] >=
+             grid().correspondence_cost_cells_[ToFlatIndex(xy_index)] >=
                  kFreeProbabilityValue;
     }
 
     bool is_unknown(const Eigen::Array2i& xy_index) const {
       if (!is_in_limits(xy_index)) return true;
-      const int& value = grid.correspondence_cost_cells_[ToFlatIndex(xy_index)];
+      const int& value =
+          grid().correspondence_cost_cells_[ToFlatIndex(xy_index)];
       return value == 0 ||
              (value >= kOccupiedProbabilityValue && !is_free(xy_index));
     }
 
-    bool is_known(const Eigen::Vector3d& global_position) const {
-      const Eigen::Vector3d position_in_submap =
-          submap.local_pose() * pose.inverse() * global_position;
-      return !is_unknown(
-          limits.GetCellIndex(position_in_submap.head<2>().cast<float>()));
+    bool is_known(const Eigen::Vector3d& local_position_in_submap) const {
+      return !is_unknown(limits().GetCellIndex(
+          local_position_in_submap.head<2>().cast<float>()));
     }
   };
 
-  template <class T>
+  class SubmapCache {
+   public:
+    SubmapCache(const cartographer::mapping::PoseGraph2D* const pose_graph)
+        : pose_graph_(pose_graph) {}
+    Detector::Submap& operator()(
+        const cartographer::mapping::SubmapId& id) const {
+      return *IfExists(id);
+    }
+
+    Submap* IfExists(const cartographer::mapping::SubmapId& id) const {
+      auto iter = submaps_.lower_bound(id);
+      if (iter != submaps_.end() && iter->first == id) return &iter->second;
+      auto submap_data = pose_graph_->GetSubmapData(id);
+      if (submap_data.submap != nullptr) {
+        // LOG(INFO) << "Cache has seen a new submap " << id;
+        return &submaps_
+                    .emplace_hint(
+                        iter,
+                        std::make_pair(id, Detector::Submap(id, submap_data)))
+                    ->second;
+      } else {
+        return nullptr;
+      }
+    }
+
+    cartographer::mapping::MapById<
+        cartographer::mapping::SubmapId,
+        cartographer::mapping::PoseGraphInterface::SubmapData>&
+    last_all_submap_data() {
+      return last_all_submap_data_;
+    }
+
+    void Rebuild() {
+      submaps_.clear();
+      last_all_submap_data_ = pose_graph_->GetAllSubmapData();
+
+      for (const auto& submap_data : last_all_submap_data_) {
+        submaps_.emplace(
+            std::make_pair(submap_data.id,
+                           Detector::Submap(submap_data.id, submap_data.data)));
+      }
+    }
+
+   private:
+    using SubmapPair =
+        std::pair<cartographer::mapping::SubmapId, Detector::Submap>;
+    mutable std::map<cartographer::mapping::SubmapId, Detector::Submap>
+        submaps_;
+    const cartographer::mapping::PoseGraph2D* const pose_graph_;
+
+    cartographer::mapping::MapById<
+        cartographer::mapping::SubmapId,
+        cartographer::mapping::PoseGraphInterface::SubmapData>
+        last_all_submap_data_;
+  };
+
+  SubmapCache submap_cache_;
+
   // Goes through previously edge-detected local frontier points in submaps,
   // checks if they really are frontier points by looking in other submaps,
   // and creates a marker containing the appropriate frontier points.
   visualization_msgs::Marker CreateMarkerForSubmap(
-      const cartographer::mapping::SubmapId& id_i, const T& submap_data_getter);
+      const cartographer::mapping::SubmapId& id_i);
 
   Box CalculateBoundingBox(const Submap& submap) {
     auto& bounding_box_info = bounding_boxes_[submap.id];
@@ -153,10 +208,7 @@ class Detector {
                      std::max(p1_global.y(), p2_global.y()))};
   }
 
-  void RebuildTree(const cartographer::mapping::MapById<
-                   cartographer::mapping::SubmapId,
-                   cartographer::mapping::PoseGraphInterface::SubmapData>&
-                       all_submap_data);
+  void RebuildTree();
 };
 
 }  // namespace frontier
