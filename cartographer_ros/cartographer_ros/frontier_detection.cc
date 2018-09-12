@@ -284,8 +284,8 @@ void Detector::HandleSubmapUpdates(
                           (unknown_neighbours >= 3u).cast<uint16_t>() *
                           (free_neighbours >= 3u).cast<uint16_t>());
 
-    for (int x = 0; x < x_dim; x++)
-      for (int y = 0; y < y_dim; y++) {
+    for (int y = 0; y < y_dim; y++)
+      for (int x = 0; x < x_dim; x++) {
         if (frontier(x, y)) {
           const Eigen::Array2i xy_index(Eigen::Array2i{x, y} + offset);
           const Eigen::Vector3d position_in_local =
