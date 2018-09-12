@@ -9,7 +9,7 @@ Detector::Detector(cartographer::mapping::PoseGraph2D* const pose_graph)
     : publisher_initialized_(false),
       last_optimizations_performed_(-1),
       pose_graph_(pose_graph),
-      submap_cache_(pose_graph_) {}
+      submaps_(pose_graph_) {}
 
 void Detector::InitPublisher() {
   frontier_publisher_ =
@@ -25,7 +25,7 @@ void Detector::PublishAllSubmaps() {
 
   std::unique_lock<std::mutex> lock(mutex_);
 
-  for (const auto& submap_data_i : submap_cache_.last_all_submap_data())
+  for (const auto& submap_data_i : submaps_.last_all_submap_data())
     frontier_markers.markers.push_back(CreateMarkerForSubmap(submap_data_i.id));
 
   frontier_publisher_.publish(frontier_markers);
@@ -47,14 +47,11 @@ void Detector::PublishSubmaps(
 
 bool Detector::CheckForOptimizationEvent() {
   int actual_optimizations_performed = pose_graph_->optimizations_performed();
-  {
-    std::unique_lock<std::mutex> lock(mutex_);
-    if (actual_optimizations_performed != last_optimizations_performed_) {
-      last_optimizations_performed_ = actual_optimizations_performed;
-    } else
-      return false;
-  }
-  submap_cache_.Rebuild();
+  if (actual_optimizations_performed != last_optimizations_performed_) {
+    last_optimizations_performed_ = actual_optimizations_performed;
+  } else
+    return false;
+  submaps_.Invalidate();
   RebuildTree();
   PublishAllSubmaps();
   return true;
@@ -62,7 +59,7 @@ bool Detector::CheckForOptimizationEvent() {
 
 visualization_msgs::Marker Detector::CreateMarkerForSubmap(
     const cartographer::mapping::SubmapId& id_i) {
-  Submap& s_i(submap_cache_(id_i));
+  Submap& s_i(submaps_(id_i));
 
   visualization_msgs::Marker frontier_marker;
   frontier_marker.header.frame_id = "map";
@@ -100,6 +97,7 @@ visualization_msgs::Marker Detector::CreateMarkerForSubmap(
     LOG(WARNING) << ss.str();
   }*/
 
+  // TODO vectorize
   for (auto& frontier_cell : submap_frontier_cells) {
     const auto global_position = s_i.pose * frontier_cell.first;
 
@@ -108,7 +106,7 @@ visualization_msgs::Marker Detector::CreateMarkerForSubmap(
     auto& submap_hint = frontier_cell.second;
 
     if (submap_hint != cartographer::mapping::SubmapId{-1, -1}) {
-      Submap* s_j = submap_cache_.IfExists(submap_hint);
+      Submap* s_j = submaps_.IfExists(submap_hint);
       if (s_j == nullptr) {
         submap_hint = {-1, -1};
       } else {
@@ -126,7 +124,7 @@ visualization_msgs::Marker Detector::CreateMarkerForSubmap(
                             bounding_boxes_.at(active_submap).last_global_box))
           continue;
 
-        Submap* s_j = submap_cache_.IfExists(id_j);
+        Submap* s_j = submaps_.IfExists(id_j);
         if (s_j == nullptr) {
           continue;
         }
@@ -142,7 +140,7 @@ visualization_msgs::Marker Detector::CreateMarkerForSubmap(
             intersecting_submap.second;
         if (id_j == s_i.id) continue;
 
-        Submap* s_j = submap_cache_.IfExists(id_j);
+        Submap* s_j = submaps_.IfExists(id_j);
         if (s_j == nullptr) {
           rt_.remove(
               std::make_pair(bounding_boxes_.at(id_j).last_global_box, id_j));
@@ -191,9 +189,11 @@ void Detector::HandleSubmapUpdates(
                                &submaps_to_publish](
                                   const cartographer::mapping::SubmapId& id_i,
                                   const bool cleanup_of_previous) -> void {
-    const Submap& s_i(submap_cache_(id_i));
+    const Submap& s_i(submaps_(id_i));
     // std::unique_lock<std::mutex> lock(mutex_);
     auto& submap_frontier_cells = submap_frontier_cells_[id_i];
+
+    // TODO unnecessary if cleanup_of_previous
     submap_frontier_cells.clear();
 
     Eigen::Array2i offset;
@@ -205,7 +205,7 @@ void Detector::HandleSubmapUpdates(
 
     const cartographer::mapping::SubmapId id_prev(
         {id_i.trajectory_id, id_i.submap_index - 1});
-    auto* submap_prev = submap_cache_.IfExists(id_prev);
+    auto* submap_prev = submaps_.IfExists(id_prev);
     if (submap_prev != nullptr) {
       neighbours.emplace_back(*submap_prev);
     }
@@ -214,34 +214,80 @@ void Detector::HandleSubmapUpdates(
       for (int i = 1; i <= 2; i++) {
         const cartographer::mapping::SubmapId id_next(
             {id_i.trajectory_id, id_i.submap_index + i});
-        auto* submap_next = submap_cache_.IfExists(id_next);
+        auto* submap_next = submaps_.IfExists(id_next);
         if (submap_next != nullptr) {
           neighbours.emplace_back(*submap_next);
         }
       }
     }
 
-    for (const Eigen::Array2i& xy_index :
-         cartographer::mapping::XYIndexRangeIterator(
-             offset, Eigen::Array2i(cell_limits.num_x_cells - 1,
-                                    cell_limits.num_y_cells - 1) +
-                         offset)) {
-      if (s_i.is_unknown(xy_index)) {
-        int free_neighbours = 0;
-        int unknown_neighbours = 0;
-        auto check_neighbour = [&](const Eigen::Array2i& other_xy_index) {
-          if (s_i.is_unknown(other_xy_index)) unknown_neighbours++;
-          if (s_i.is_free(other_xy_index)) free_neighbours++;
-        };
-        check_neighbour(xy_index + Eigen::Array2i{0, 1});
-        check_neighbour(xy_index + Eigen::Array2i{0, -1});
-        check_neighbour(xy_index + Eigen::Array2i{1, 0});
-        check_neighbour(xy_index + Eigen::Array2i{-1, 0});
-        check_neighbour(xy_index + Eigen::Array2i{1, 1});
-        check_neighbour(xy_index + Eigen::Array2i{1, -1});
-        check_neighbour(xy_index + Eigen::Array2i{-1, 1});
-        check_neighbour(xy_index + Eigen::Array2i{-1, -1});
-        if (free_neighbours >= 3 && unknown_neighbours >= 3) {
+    const int full_x_dim = s_i.limits().cell_limits().num_x_cells;
+    const int full_y_dim = s_i.limits().cell_limits().num_y_cells;
+
+    using DynamicArray = Eigen::Array<uint16_t, Eigen::Dynamic, Eigen::Dynamic>;
+    Eigen::Map<const DynamicArray> full_correspondence_costs(
+        s_i.grid().correspondence_cost_cells().data(), full_x_dim, full_y_dim);
+
+    const int x_dim = cell_limits.num_x_cells;
+    const int y_dim = cell_limits.num_y_cells;
+
+    const auto correspondence_costs =
+        full_correspondence_costs.block(offset.x(), offset.y(), x_dim, y_dim);
+
+    DynamicArray free_cells(
+        (correspondence_costs >= kFreeProbabilityValue).cast<uint16_t>());
+    DynamicArray unknown_cells(
+        ((correspondence_costs == 0) +
+         (correspondence_costs > kOccupiedProbabilityValue) *
+             (correspondence_costs < kFreeProbabilityValue))
+            .cast<uint16_t>());
+
+    DynamicArray free_neighbours(DynamicArray::Zero(x_dim, y_dim));
+
+    free_neighbours.leftCols(y_dim - 1) += free_cells.rightCols(y_dim - 1);
+    free_neighbours.topLeftCorner(x_dim - 1, y_dim - 1) +=
+        free_cells.bottomRightCorner(x_dim - 1, y_dim - 1);
+    free_neighbours.topRows(x_dim - 1) += free_cells.bottomRows(x_dim - 1);
+
+    free_neighbours.rightCols(y_dim - 1) += free_cells.leftCols(y_dim - 1);
+    free_neighbours.bottomRightCorner(x_dim - 1, y_dim - 1) +=
+        free_cells.topLeftCorner(x_dim - 1, y_dim - 1);
+    free_neighbours.bottomRows(x_dim - 1) += free_cells.topRows(x_dim - 1);
+
+    free_neighbours.bottomLeftCorner(x_dim - 1, y_dim - 1) +=
+        free_cells.topRightCorner(x_dim - 1, y_dim - 1);
+    free_neighbours.topRightCorner(x_dim - 1, y_dim - 1) +=
+        free_cells.bottomLeftCorner(x_dim - 1, y_dim - 1);
+
+    DynamicArray unknown_neighbours(DynamicArray::Zero(x_dim, y_dim));
+
+    unknown_neighbours.leftCols(y_dim - 1) +=
+        unknown_cells.rightCols(y_dim - 1);
+    unknown_neighbours.topLeftCorner(x_dim - 1, y_dim - 1) +=
+        unknown_cells.bottomRightCorner(x_dim - 1, y_dim - 1);
+    unknown_neighbours.topRows(x_dim - 1) +=
+        unknown_cells.bottomRows(x_dim - 1);
+
+    unknown_neighbours.rightCols(y_dim - 1) +=
+        unknown_cells.leftCols(y_dim - 1);
+    unknown_neighbours.bottomRightCorner(x_dim - 1, y_dim - 1) +=
+        unknown_cells.topLeftCorner(x_dim - 1, y_dim - 1);
+    unknown_neighbours.bottomRows(x_dim - 1) +=
+        unknown_cells.topRows(x_dim - 1);
+
+    unknown_neighbours.bottomLeftCorner(x_dim - 1, y_dim - 1) +=
+        unknown_cells.topRightCorner(x_dim - 1, y_dim - 1);
+    unknown_neighbours.topRightCorner(x_dim - 1, y_dim - 1) +=
+        unknown_cells.bottomLeftCorner(x_dim - 1, y_dim - 1);
+
+    DynamicArray frontier(unknown_cells *
+                          (unknown_neighbours >= 3u).cast<uint16_t>() *
+                          (free_neighbours >= 3u).cast<uint16_t>());
+
+    for (int x = 0; x < x_dim; x++)
+      for (int y = 0; y < y_dim; y++) {
+        if (frontier(x, y)) {
+          const Eigen::Array2i xy_index(Eigen::Array2i{x, y} + offset);
           const Eigen::Vector3d position_in_local =
               (Eigen::Vector3d()
                    << s_i.limits().GetCellCenter(xy_index).cast<double>(),
@@ -257,7 +303,6 @@ void Detector::HandleSubmapUpdates(
                                cartographer::mapping::SubmapId{-1, -1}));
         }
       }
-    }
 
     const double max_x =
         s_i.limits().max().x() - s_i.limits().resolution() * offset.y();
@@ -285,7 +330,7 @@ void Detector::HandleSubmapUpdates(
       for (int i = 1; i <= 2; i++) {
         const cartographer::mapping::SubmapId id_prev(
             {id_i.trajectory_id, id_i.submap_index - i});
-        auto* submap_prev = submap_cache_.IfExists(id_prev);
+        auto* submap_prev = submaps_.IfExists(id_prev);
         if (submap_prev != nullptr) {
           previous_submaps_to_cleanup.push_back(submap_prev);
         }
@@ -317,7 +362,7 @@ void Detector::HandleSubmapUpdates(
   }
 
   if (!CheckForOptimizationEvent()) {
-    //PublishSubmaps(submaps_to_publish);
+    PublishSubmaps(submaps_to_publish);
   }
   // if (publish_) publishUpdatedFrontiers();
 }
@@ -326,22 +371,20 @@ void Detector::RebuildTree() {
   std::unique_lock<std::mutex> lock(mutex_);
   std::vector<Value> rectangles;
 
-  for (const auto& submap_data : submap_cache_.last_all_submap_data()) {
+  for (const auto& submap_data : submaps_.last_all_submap_data()) {
     const auto bounding_box_iter = bounding_boxes_.find(submap_data.id);
     if (bounding_box_iter == bounding_boxes_.end()) {
       LOG(ERROR) << "Bounding box missing, should not happen.";
       continue;
     }
     auto& bounding_box_info = bounding_box_iter->second;
-    const Submap& s_i(submap_cache_(submap_data.id));
+    const Submap& s_i(submaps_(submap_data.id));
     bounding_box_info.last_global_box = CalculateBoundingBox(s_i);
 
     if (std::find(active_submaps_.begin(), active_submaps_.end(), s_i.id) ==
         active_submaps_.end()) {
       rectangles.emplace_back(
-          std::piecewise_construct,
-          std::forward_as_tuple(bounding_box_info.last_global_box),
-          std::forward_as_tuple(s_i.id));
+          std::make_pair(bounding_box_info.last_global_box, s_i.id));
     }
   }
 

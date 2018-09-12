@@ -122,7 +122,7 @@ class Detector {
       const int& value =
           grid().correspondence_cost_cells_[ToFlatIndex(xy_index)];
       return value == 0 ||
-             (value >= kOccupiedProbabilityValue && !is_free(xy_index));
+             (value > kOccupiedProbabilityValue && !is_free(xy_index));
     }
 
     bool is_known(const Eigen::Vector3d& local_position_in_submap) const {
@@ -163,7 +163,7 @@ class Detector {
       return last_all_submap_data_;
     }
 
-    void Rebuild() {
+    void Invalidate() {
       submaps_.clear();
       last_all_submap_data_ = pose_graph_->GetAllSubmapData();
 
@@ -187,7 +187,7 @@ class Detector {
         last_all_submap_data_;
   };
 
-  SubmapCache submap_cache_;
+  SubmapCache submaps_;
 
   // Goes through previously edge-detected local frontier points in submaps,
   // checks if they really are frontier points by looking in other submaps,
