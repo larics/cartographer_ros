@@ -100,7 +100,18 @@ class Detector {
                   (Eigen::Vector3d() << limits.max(), 0.).finished())) */
           to_global_position(
               rigid3d_to_isometry2d(pose * submap.local_pose().inverse())),
-          to_local_submap_position(to_global_position.inverse()){};
+          to_local_submap_position(to_global_position.inverse()) {
+      frontier_marker.header.frame_id = "map";
+      frontier_marker.pose.orientation.w = 1.0;
+      frontier_marker.type = visualization_msgs::Marker::POINTS;
+      frontier_marker.scale.x = 0.1;
+      frontier_marker.scale.y = 0.1;
+      frontier_marker.color.r = 1.0;
+      frontier_marker.color.a = 1.0;
+      std::ostringstream ss;
+      ss << "Trajectory " << id.trajectory_id << ", submap " << id.submap_index;
+      frontier_marker.ns = ss.str();
+    }
 
     const cartographer::mapping::SubmapId id;
     const cartographer::mapping::Submap2D& submap;
@@ -108,6 +119,7 @@ class Detector {
     const Eigen::Isometry2d to_global_position;
     const Eigen::Isometry2d to_local_submap_position;
     Eigen::Matrix2Xd cached_frontier_marker_cells_global;
+    visualization_msgs::Marker frontier_marker;
 
     const cartographer::mapping::Grid2D& grid() const { return *submap.grid(); }
     const cartographer::mapping::MapLimits& limits() const {
@@ -204,7 +216,7 @@ class Detector {
   // Goes through previously edge-detected local frontier points in submaps,
   // checks if they really are frontier points by looking in other submaps,
   // and creates a marker containing the appropriate frontier points.
-  visualization_msgs::Marker CreateMarkerForSubmap(
+  visualization_msgs::Marker& CreateMarkerForSubmap(
       const cartographer::mapping::SubmapId& id_i,
       const std::vector<cartographer::mapping::SubmapId>* updated_submaps);
 
