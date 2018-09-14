@@ -1,3 +1,5 @@
+#pragma GCC target ("arch=broadwell")
+
 #include <absl/synchronization/mutex.h>
 #include <cartographer/mapping/2d/map_limits.h>
 #include <cartographer_ros/frontier_detection.h>
