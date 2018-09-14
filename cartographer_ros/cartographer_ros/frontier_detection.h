@@ -49,7 +49,8 @@ class Detector {
 
   void PublishAllSubmaps();
   void PublishSubmaps(
-      const std::vector<cartographer::mapping::SubmapId>& submap_ids);
+      const std::vector<cartographer::mapping::SubmapId>& submap_ids,
+      const std::vector<cartographer::mapping::SubmapId>& additional_submaps);
 
   bool CheckForOptimizationEvent();
 
@@ -106,6 +107,7 @@ class Detector {
     const cartographer::transform::Rigid3d pose;
     const Eigen::Isometry2d to_global_position;
     const Eigen::Isometry2d to_local_submap_position;
+    Eigen::Matrix2Xd cached_frontier_marker_cells_global;
 
     const cartographer::mapping::Grid2D& grid() const { return *submap.grid(); }
     const cartographer::mapping::MapLimits& limits() const {
@@ -203,7 +205,8 @@ class Detector {
   // checks if they really are frontier points by looking in other submaps,
   // and creates a marker containing the appropriate frontier points.
   visualization_msgs::Marker CreateMarkerForSubmap(
-      const cartographer::mapping::SubmapId& id_i);
+      const cartographer::mapping::SubmapId& id_i,
+      const std::vector<cartographer::mapping::SubmapId>* updated_submaps);
 
   Box CalculateBoundingBox(const Submap& submap) {
     auto& bounding_box_info = bounding_boxes_[submap.id];

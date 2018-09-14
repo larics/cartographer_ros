@@ -26,20 +26,26 @@ void Detector::PublishAllSubmaps() {
   std::unique_lock<std::mutex> lock(mutex_);
 
   for (const auto& submap_data_i : submaps_.last_all_submap_data())
-    frontier_markers.markers.push_back(CreateMarkerForSubmap(submap_data_i.id));
+    frontier_markers.markers.push_back(CreateMarkerForSubmap(submap_data_i.id, nullptr));
 
   frontier_publisher_.publish(frontier_markers);
 }
 
 void Detector::PublishSubmaps(
-    const std::vector<cartographer::mapping::SubmapId>& submap_ids) {
+    const std::vector<cartographer::mapping::SubmapId>& submap_ids,
+    const std::vector<cartographer::mapping::SubmapId>& additional_submaps) {
   if (!publisher_initialized_) InitPublisher();
 
   visualization_msgs::MarkerArray frontier_markers;
 
   for (const auto& id_i : submap_ids) {
     // LOG(ERROR) << "publishing submap " << id_i.submap_index;
-    frontier_markers.markers.push_back(CreateMarkerForSubmap(id_i));
+    frontier_markers.markers.push_back(CreateMarkerForSubmap(id_i, nullptr));
+  }
+
+  for (const auto& id_additional : additional_submaps) {
+    // LOG(ERROR) << "publishing submap " << id_i.submap_index;
+    frontier_markers.markers.push_back(CreateMarkerForSubmap(id_additional, &submap_ids));
   }
 
   frontier_publisher_.publish(frontier_markers);
@@ -58,7 +64,8 @@ bool Detector::CheckForOptimizationEvent() {
 }
 
 visualization_msgs::Marker Detector::CreateMarkerForSubmap(
-    const cartographer::mapping::SubmapId& id_i) {
+    const cartographer::mapping::SubmapId& id_i,
+    const std::vector<cartographer::mapping::SubmapId>* const updated_submap_ids) {
   Submap& s_i(submaps_(id_i));
 
   visualization_msgs::Marker frontier_marker;
@@ -99,67 +106,11 @@ visualization_msgs::Marker Detector::CreateMarkerForSubmap(
 
   // TODO vectorize
 
-  Eigen::Matrix<double, 3, Eigen::Dynamic> global_positions =
-      s_i.to_global_position * submap_frontier_cells.first;
-
-  for (int i = 0; i < submap_frontier_cells.second.size(); i++) {
-    const auto global_position = global_positions.col(i);
-
-    bool ok = true;
-
-    auto& submap_hint = submap_frontier_cells.second.at(i);
-
-    /*if (submap_hint != cartographer::mapping::SubmapId{-1, -1}) {
-      Submap* s_j = submaps_.IfExists(submap_hint);
-      if (s_j == nullptr) {
-        submap_hint = {-1, -1};
-      } else {
-        if (s_j->is_known(s_j->to_local_submap_position * global_position))
-          ok = false;
-      }
-      if (ok) submap_hint = {-1, -1};
-    }
-
-    if (ok)
-      for (const auto& active_submap : active_submaps_) {
-        const cartographer::mapping::SubmapId& id_j = active_submap;
-        if (id_j == s_i.id) continue;
-        if (!bg::intersects(bounding_box.last_global_box,
-                            bounding_boxes_.at(active_submap).last_global_box))
-          continue;
-
-        Submap* s_j = submaps_.IfExists(id_j);
-        if (s_j == nullptr) {
-          continue;
-        }
-        if (s_j->is_known(s_j->to_local_submap_position * global_position)) {
-          ok = false;
-          submap_hint = s_j->id;
-        }
-      }
-
-    if (ok) {
-      for (const auto& intersecting_submap : intersecting_submaps) {
-        const cartographer::mapping::SubmapId& id_j =
-            intersecting_submap.second;
-        if (id_j == s_i.id) continue;
-
-        Submap* s_j = submaps_.IfExists(id_j);
-        if (s_j == nullptr) {
-          rt_.remove(
-              std::make_pair(bounding_boxes_.at(id_j).last_global_box, id_j));
-          continue;
-        }
-
-        if (s_j->is_known(s_j->to_local_submap_position * global_position)) {
-          ok = false;
-          submap_hint = id_j;
-        }
-      }
-    }*/
-
-    if (ok) {
-      submap_hint = {-1, -1};
+  if (updated_submap_ids == nullptr) {
+    s_i.cached_frontier_marker_cells_global =
+        (s_i.to_global_position * submap_frontier_cells.first).topRows(2);
+    for (int i = 0; i < s_i.cached_frontier_marker_cells_global.cols(); i++) {
+      const auto global_position = s_i.cached_frontier_marker_cells_global.col(i);
       geometry_msgs::Point frontier_point;
       frontier_point.x = global_position.x();
       frontier_point.y = global_position.y();
@@ -167,6 +118,102 @@ visualization_msgs::Marker Detector::CreateMarkerForSubmap(
       frontier_marker.points.push_back(frontier_point);
     }
   }
+  else {
+    std::vector<double> updated_frontier_marker_cells_global;
+
+    std::vector<Eigen::Array2Xi> indices_in_updated_submaps;
+
+    std::vector<Submap> updated_submaps;
+    for (int i = 0; i < updated_submap_ids->size(); i++) {
+      updated_submaps.push_back(submaps_((*updated_submap_ids)[i]));
+      indices_in_updated_submaps.push_back(
+          (( (s_i.to_local_submap_position * s_i.cached_frontier_marker_cells_global).array().colwise() -
+              updated_submaps[i].limits().max().array()) /
+              (-updated_submaps[i].limits().resolution()) -
+              0.5)
+              .round()
+              .cast<int>());
+    }
+
+    for (int j = 0; j < s_i.cached_frontier_marker_cells_global.cols(); j++) {
+      const auto global_position = s_i.cached_frontier_marker_cells_global.col(j);
+
+      bool ok = true;
+
+      for (int i = 0; i < updated_submap_ids->size(); i++) {
+        ok &= updated_submaps[i].is_unknown(
+            {indices_in_updated_submaps[i](1, j),
+             indices_in_updated_submaps[i](0, j)});
+      }
+
+      //auto& submap_hint = submap_frontier_cells.second.at(i);
+
+      /*if (submap_hint != cartographer::mapping::SubmapId{-1, -1}) {
+        Submap* s_j = submaps_.IfExists(submap_hint);
+        if (s_j == nullptr) {
+          submap_hint = {-1, -1};
+        } else {
+          if (s_j->is_known(s_j->to_local_submap_position * global_position))
+            ok = false;
+        }
+        if (ok) submap_hint = {-1, -1};
+      }
+
+      if (ok)
+        for (const auto& active_submap : active_submaps_) {
+          const cartographer::mapping::SubmapId& id_j = active_submap;
+          if (id_j == s_i.id) continue;
+          if (!bg::intersects(bounding_box.last_global_box,
+                              bounding_boxes_.at(active_submap).last_global_box))
+            continue;
+
+          Submap* s_j = submaps_.IfExists(id_j);
+          if (s_j == nullptr) {
+            continue;
+          }
+          if (s_j->is_known(s_j->to_local_submap_position * global_position)) {
+            ok = false;
+            submap_hint = s_j->id;
+          }
+        }
+
+      if (ok) {
+        for (const auto& intersecting_submap : intersecting_submaps) {
+          const cartographer::mapping::SubmapId& id_j =
+              intersecting_submap.second;
+          if (id_j == s_i.id) continue;
+
+          Submap* s_j = submaps_.IfExists(id_j);
+          if (s_j == nullptr) {
+            rt_.remove(
+                std::make_pair(bounding_boxes_.at(id_j).last_global_box, id_j));
+            continue;
+          }
+
+          if (s_j->is_known(s_j->to_local_submap_position * global_position)) {
+            ok = false;
+            submap_hint = id_j;
+          }
+        }
+      }*/
+
+      if (ok) {
+        updated_frontier_marker_cells_global.insert(
+            updated_frontier_marker_cells_global.end(), {global_position.x(), global_position.y()});
+        geometry_msgs::Point frontier_point;
+        frontier_point.x = global_position.x();
+        frontier_point.y = global_position.y();
+        frontier_point.z = 0.;  // global_position.z();
+        frontier_marker.points.push_back(frontier_point);
+        //submap_hint = {-1, -1};
+      }
+    }
+    s_i.cached_frontier_marker_cells_global =
+        Eigen::Map<Eigen::Matrix2Xd>(
+            updated_frontier_marker_cells_global.data(),
+            2, updated_frontier_marker_cells_global.size() / 2);
+  }
+
   return frontier_marker;
 }
 
@@ -185,10 +232,10 @@ Detector::GetIntersectingFinishedSubmaps(
 
 void Detector::HandleSubmapUpdates(
     const std::vector<cartographer::mapping::SubmapId>& submap_ids) {
-  std::vector<cartographer::mapping::SubmapId> submaps_to_publish;
+  std::vector<cartographer::mapping::SubmapId> additional_submaps_to_publish;
 
   const auto process_submap =
-      [this, &submaps_to_publish](
+      [this, &additional_submaps_to_publish](
           const cartographer::mapping::SubmapId& id_i) -> void {
     const Submap& s_i(submaps_(id_i));
     // std::unique_lock<std::mutex> lock(mutex_);
@@ -377,9 +424,9 @@ void Detector::HandleSubmapUpdates(
             final_cleaned_frontier_cells_vec.data(), 3,
             previous_submap_frontier_cells.second.size());
 
-        if (std::find(submaps_to_publish.begin(), submaps_to_publish.end(),
-                      previous_submap->id) == submaps_to_publish.end())
-          submaps_to_publish.push_back(previous_submap->id);
+        if (std::find(additional_submaps_to_publish.begin(), additional_submaps_to_publish.end(),
+                      previous_submap->id) == additional_submaps_to_publish.end())
+          additional_submaps_to_publish.push_back(previous_submap->id);
       }
 
     // Keep only finished submaps in the tree in order to avoid lots of
@@ -397,16 +444,12 @@ void Detector::HandleSubmapUpdates(
       }
     }
 
-    /*const auto intersecting_submaps = GetIntersectingFinishedSubmaps(id_i);
+    const auto intersecting_submaps = GetIntersectingFinishedSubmaps(id_i);
     for (const auto& intersecting_submap : intersecting_submaps) {
-      if (std::find(submaps_to_publish.begin(), submaps_to_publish.end(),
-                    intersecting_submap) == submaps_to_publish.end())
-        submaps_to_publish.push_back(intersecting_submap);
-    }*/
-
-    if (std::find(submaps_to_publish.begin(), submaps_to_publish.end(), id_i) ==
-        submaps_to_publish.end())
-      submaps_to_publish.push_back(id_i);
+      if (std::find(additional_submaps_to_publish.begin(), additional_submaps_to_publish.end(),
+                    intersecting_submap) == additional_submaps_to_publish.end())
+        additional_submaps_to_publish.push_back(intersecting_submap);
+    }
   };
 
   for (const auto& id_i : submap_ids) {
@@ -414,7 +457,7 @@ void Detector::HandleSubmapUpdates(
   }
 
   if (!CheckForOptimizationEvent()) {
-    PublishSubmaps(submaps_to_publish);
+    PublishSubmaps(submap_ids, additional_submaps_to_publish);
   }
   // if (publish_) publishUpdatedFrontiers();
 }
