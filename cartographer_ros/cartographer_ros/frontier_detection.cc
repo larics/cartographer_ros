@@ -291,10 +291,11 @@ void Detector::HandleSubmapUpdates(
       // common::RoundToInt((max_.y() - point.y()) / resolution_ - 0.5),
       //     common::RoundToInt((max_.x() - point.x()) / resolution_ - 0.5));
       // }
-      Eigen::Array2Xd frontier_cells_2 = frontier_cells;
-      frontier_cells_2.colwise() -= previous_submap->limits().max().array();
       Eigen::Array2Xi frontier_cell_2_indexes =
-          (frontier_cells_2 / (-previous_submap->limits().resolution()) - 0.5)
+          ((frontier_cells.colwise() -
+            previous_submap->limits().max().array()) /
+               (-previous_submap->limits().resolution()) -
+           0.5)
               .round()
               .cast<int>();
 
@@ -346,11 +347,13 @@ void Detector::HandleSubmapUpdates(
         int num_frontier_cells_to_clean =
             submap_frontier_cells_to_cleanup.second.size();
 
-        Eigen::Array2Xd frontier_cells_2 =
-            submap_frontier_cells_to_cleanup.first.topRows(2);
-        frontier_cells_2.colwise() -= s_i.limits().max().array();
         Eigen::Array2Xi frontier_cell_2_indexes =
-            (frontier_cells_2 / (-s_i.limits().resolution()) - 0.5)
+            ((submap_frontier_cells_to_cleanup.first.array()
+                  .topRows(2)
+                  .colwise() -
+              s_i.limits().max().array()) /
+                 (-s_i.limits().resolution()) -
+             0.5)
                 .round()
                 .cast<int>();
 
