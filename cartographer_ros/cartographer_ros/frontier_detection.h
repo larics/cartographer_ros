@@ -30,6 +30,13 @@ constexpr uint16_t kOccupiedProbabilityValue = 16384;
 namespace bg = boost::geometry;
 namespace bgi = bg::index;
 
+inline Eigen::Isometry2d rigid3d_to_isometry2d(
+    const cartographer::transform::Rigid3d& rigid) {
+  return Eigen::Translation2d(rigid.translation().head<2>()) *
+         Eigen::Rotation2Dd(
+             rigid.rotation().toRotationMatrix().block<2, 2>(0, 0));
+}
+
 class Detector {
  public:
   Detector(cartographer::mapping::PoseGraph2D* pose_graph);
@@ -59,10 +66,10 @@ class Detector {
 
   std::mutex mutex_;
 
-  std::map<
-      cartographer::mapping::SubmapId,
-      std::vector<std::pair<Eigen::Vector3d,
-                            cartographer::mapping::SubmapId /* submap_hint */>>>
+  std::map<cartographer::mapping::SubmapId,
+           std::pair<
+               Eigen::Matrix3Xd,
+               std::vector<cartographer::mapping::SubmapId> /* submap_hints */>>
       submap_frontier_cells_;
 
   struct BoundingBoxInfo {
@@ -90,12 +97,15 @@ class Detector {
           pose(submap_data.pose), /* * submap.local_pose().inverse() *
               cartographer::transform::Rigid3d::Translation(
                   (Eigen::Vector3d() << limits.max(), 0.).finished())) */
-          to_local_submap_position(submap.local_pose() * pose.inverse()){};
+          to_global_position(
+              rigid3d_to_isometry2d(pose * submap.local_pose().inverse())),
+          to_local_submap_position(to_global_position.inverse()){};
 
     const cartographer::mapping::SubmapId id;
     const cartographer::mapping::Submap2D& submap;
     const cartographer::transform::Rigid3d pose;
-    const cartographer::transform::Rigid3d to_local_submap_position;
+    const Eigen::Isometry2d to_global_position;
+    const Eigen::Isometry2d to_local_submap_position;
 
     const cartographer::mapping::Grid2D& grid() const { return *submap.grid(); }
     const cartographer::mapping::MapLimits& limits() const {
