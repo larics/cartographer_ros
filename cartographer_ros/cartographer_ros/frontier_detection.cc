@@ -212,7 +212,13 @@ void Detector::HandleSubmapUpdates(
     const int x_dim = cell_limits.num_x_cells;
     const int y_dim = cell_limits.num_y_cells;
 
-    const auto correspondence_costs =
+    DynamicArray correspondence_costs(x_dim + 2, y_dim + 2);
+    correspondence_costs.row(0) = 0;
+    correspondence_costs.row(x_dim + 1) = 0;
+    correspondence_costs.col(0) = 0;
+    correspondence_costs.col(y_dim + 1) = 0;
+
+    correspondence_costs.block(1, 1, x_dim, y_dim) =
         full_correspondence_costs.block(offset.x(), offset.y(), x_dim, y_dim);
 
     DynamicArray free_cells(
@@ -223,43 +229,23 @@ void Detector::HandleSubmapUpdates(
              (correspondence_costs < kFreeProbabilityValue))
             .cast<uint16_t>());
 
-    DynamicArray free_neighbours(DynamicArray::Zero(x_dim, y_dim));
+    DynamicArray free_neighbours = free_cells.block(0, 0, x_dim, y_dim) +
+                                   free_cells.block(0, 1, x_dim, y_dim) +
+                                   free_cells.block(0, 2, x_dim, y_dim) +
+                                   free_cells.block(1, 2, x_dim, y_dim) +
+                                   free_cells.block(2, 2, x_dim, y_dim) +
+                                   free_cells.block(2, 1, x_dim, y_dim) +
+                                   free_cells.block(2, 0, x_dim, y_dim) +
+                                   free_cells.block(1, 0, x_dim, y_dim);
 
-    free_neighbours.leftCols(y_dim - 1) += free_cells.rightCols(y_dim - 1);
-    free_neighbours.topLeftCorner(x_dim - 1, y_dim - 1) +=
-        free_cells.bottomRightCorner(x_dim - 1, y_dim - 1);
-    free_neighbours.topRows(x_dim - 1) += free_cells.bottomRows(x_dim - 1);
-
-    free_neighbours.rightCols(y_dim - 1) += free_cells.leftCols(y_dim - 1);
-    free_neighbours.bottomRightCorner(x_dim - 1, y_dim - 1) +=
-        free_cells.topLeftCorner(x_dim - 1, y_dim - 1);
-    free_neighbours.bottomRows(x_dim - 1) += free_cells.topRows(x_dim - 1);
-
-    free_neighbours.bottomLeftCorner(x_dim - 1, y_dim - 1) +=
-        free_cells.topRightCorner(x_dim - 1, y_dim - 1);
-    free_neighbours.topRightCorner(x_dim - 1, y_dim - 1) +=
-        free_cells.bottomLeftCorner(x_dim - 1, y_dim - 1);
-
-    DynamicArray unknown_neighbours(DynamicArray::Zero(x_dim, y_dim));
-
-    unknown_neighbours.leftCols(y_dim - 1) +=
-        unknown_cells.rightCols(y_dim - 1);
-    unknown_neighbours.topLeftCorner(x_dim - 1, y_dim - 1) +=
-        unknown_cells.bottomRightCorner(x_dim - 1, y_dim - 1);
-    unknown_neighbours.topRows(x_dim - 1) +=
-        unknown_cells.bottomRows(x_dim - 1);
-
-    unknown_neighbours.rightCols(y_dim - 1) +=
-        unknown_cells.leftCols(y_dim - 1);
-    unknown_neighbours.bottomRightCorner(x_dim - 1, y_dim - 1) +=
-        unknown_cells.topLeftCorner(x_dim - 1, y_dim - 1);
-    unknown_neighbours.bottomRows(x_dim - 1) +=
-        unknown_cells.topRows(x_dim - 1);
-
-    unknown_neighbours.bottomLeftCorner(x_dim - 1, y_dim - 1) +=
-        unknown_cells.topRightCorner(x_dim - 1, y_dim - 1);
-    unknown_neighbours.topRightCorner(x_dim - 1, y_dim - 1) +=
-        unknown_cells.bottomLeftCorner(x_dim - 1, y_dim - 1);
+    DynamicArray unknown_neighbours = unknown_cells.block(0, 0, x_dim, y_dim) +
+                                      unknown_cells.block(0, 1, x_dim, y_dim) +
+                                      unknown_cells.block(0, 2, x_dim, y_dim) +
+                                      unknown_cells.block(1, 2, x_dim, y_dim) +
+                                      unknown_cells.block(2, 2, x_dim, y_dim) +
+                                      unknown_cells.block(2, 1, x_dim, y_dim) +
+                                      unknown_cells.block(2, 0, x_dim, y_dim) +
+                                      unknown_cells.block(1, 0, x_dim, y_dim);
 
     DynamicArray frontier(unknown_cells *
                           (unknown_neighbours >= 3u).cast<uint16_t>() *
