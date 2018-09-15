@@ -104,8 +104,8 @@ class Detector {
       frontier_marker.header.frame_id = "map";
       frontier_marker.pose.orientation.w = 1.0;
       frontier_marker.type = visualization_msgs::Marker::POINTS;
-      frontier_marker.scale.x = 0.1;
-      frontier_marker.scale.y = 0.1;
+      frontier_marker.scale.x = 0.05;
+      frontier_marker.scale.y = 0.05;
       frontier_marker.color.r = 1.0;
       frontier_marker.color.a = 1.0;
       std::ostringstream ss;
