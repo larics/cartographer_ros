@@ -1,4 +1,6 @@
+// clang-format off
 #pragma GCC target ("arch=broadwell")
+// clang-format on
 
 #include <absl/synchronization/mutex.h>
 #include <cartographer/mapping/2d/map_limits.h>
@@ -29,7 +31,7 @@ void Detector::PublishAllSubmaps() {
 
   for (const auto& submap_data_i : submaps_.last_all_submap_data())
     frontier_markers.markers.push_back(
-        CreateMarkerForSubmap(submap_data_i.id, nullptr));
+        CreateMarkerForSubmap(submap_data_i.id, nullptr, true));
 
   frontier_publisher_.publish(frontier_markers);
 }
@@ -43,13 +45,14 @@ void Detector::PublishSubmaps(
 
   for (const auto& id_i : submap_ids) {
     // LOG(ERROR) << "publishing submap " << id_i.submap_index;
-    frontier_markers.markers.push_back(CreateMarkerForSubmap(id_i, nullptr));
+    frontier_markers.markers.push_back(
+        CreateMarkerForSubmap(id_i, nullptr, false));
   }
 
   for (const auto& id_additional : additional_submaps) {
     // LOG(ERROR) << "publishing submap " << id_i.submap_index;
     frontier_markers.markers.push_back(
-        CreateMarkerForSubmap(id_additional, &submap_ids));
+        CreateMarkerForSubmap(id_additional, &submap_ids, false));
   }
 
   frontier_publisher_.publish(frontier_markers);
@@ -70,7 +73,8 @@ bool Detector::CheckForOptimizationEvent() {
 visualization_msgs::Marker& Detector::CreateMarkerForSubmap(
     const cartographer::mapping::SubmapId& id_i,
     const std::vector<cartographer::mapping::SubmapId>* const
-        updated_submap_ids) {
+        updated_submap_ids,
+    const bool check_against_active) {
   Submap& s_i(submaps_(id_i));
 
   /*LOG(WARNING) << "Publishing submap " << id_i;
@@ -124,12 +128,19 @@ visualization_msgs::Marker& Detector::CreateMarkerForSubmap(
         if (ok) submap_hint = {-1, -1};
       }
 
-      /*if (ok)
+      if (ok && check_against_active)
         for (const auto& active_submap : active_submaps_) {
           const cartographer::mapping::SubmapId& id_j = active_submap;
-          if (id_j == s_i.id) continue;
-          if (!bg::intersects(bounding_box.last_global_box,
-                              bounding_boxes_.at(active_submap).last_global_box))
+          if (id_j == s_i.id ||
+              (id_j.trajectory_id == s_i.id.trajectory_id &&
+               (id_j.submap_index == (s_i.id.submap_index - 1) ||
+                id_j.submap_index == (s_i.id.submap_index - 2) ||
+                id_j.submap_index == (s_i.id.submap_index + 1) ||
+                id_j.submap_index == (s_i.id.submap_index + 2))))
+            continue;
+          if (!bg::intersects(
+                  bounding_box.last_global_box,
+                  bounding_boxes_.at(active_submap).last_global_box))
             continue;
 
           Submap* s_j = submaps_.IfExists(id_j);
@@ -138,15 +149,22 @@ visualization_msgs::Marker& Detector::CreateMarkerForSubmap(
           }
           if (s_j->is_known(s_j->to_local_submap_position * global_position)) {
             ok = false;
+            break;
             submap_hint = s_j->id;
           }
-        }*/
+        }
 
       if (ok) {
         for (const auto& intersecting_submap : intersecting_submaps) {
           const cartographer::mapping::SubmapId& id_j =
               intersecting_submap.second;
-          if (id_j == s_i.id) continue;
+          if (id_j == s_i.id ||
+              (id_j.trajectory_id == s_i.id.trajectory_id &&
+               (id_j.submap_index == (s_i.id.submap_index - 1) ||
+                id_j.submap_index == (s_i.id.submap_index - 2) ||
+                id_j.submap_index == (s_i.id.submap_index + 1) ||
+                id_j.submap_index == (s_i.id.submap_index + 2))))
+            continue;
 
           Submap* s_j = submaps_.IfExists(id_j);
           if (s_j == nullptr) {

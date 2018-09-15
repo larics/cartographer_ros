@@ -219,7 +219,8 @@ class Detector {
   // and creates a marker containing the appropriate frontier points.
   visualization_msgs::Marker& CreateMarkerForSubmap(
       const cartographer::mapping::SubmapId& id_i,
-      const std::vector<cartographer::mapping::SubmapId>* updated_submaps);
+      const std::vector<cartographer::mapping::SubmapId>* updated_submaps,
+      bool check_against_active);
 
   Box CalculateBoundingBox(const Submap& submap) {
     auto& bounding_box_info = bounding_boxes_[submap.id];
@@ -227,6 +228,31 @@ class Detector {
         submap.pose * bounding_box_info.local_box.first;
     const Eigen::Vector3d p2_global =
         submap.pose * bounding_box_info.local_box.second;
+
+    /*visualization_msgs::Marker marker;
+    marker.header.frame_id = "map";
+    marker.pose.orientation.w = 1.0;
+    marker.type = visualization_msgs::Marker::LINE_LIST;
+    marker.scale.x = 0.1;
+    marker.scale.y = 0.1;
+    marker.color.r = 1.0;
+    marker.color.g = 1.0;
+    marker.color.a = 1.0;
+    std::ostringstream ss;
+    ss << "BBOX Trajectory " <<submap.id.trajectory_id << ", submap " <<
+    submap.id.submap_index; marker.ns = ss.str();
+
+    geometry_msgs::Point point;
+    point.x = p1_global.x();
+    point.y = p1_global.y();
+    marker.points.push_back(point);
+    point.x = p2_global.x();
+    point.y = p2_global.y();
+    marker.points.push_back(point);
+
+    visualization_msgs::MarkerArray frontier_markers;
+    frontier_markers.markers.push_back(marker);
+    frontier_publisher_.publish(frontier_markers);*/
 
     return Box{Point(std::min(p1_global.x(), p2_global.x()),
                      std::min(p1_global.y(), p2_global.y())),

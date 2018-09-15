@@ -231,6 +231,7 @@ cartographer_ros_msgs::SubmapList MapBuilderBridge::GetSubmapList() {
     submap_list.submap.push_back(submap_entry);
   }
   // frontier_detector_.handleNewSubmapList(submap_list);
+  frontier_detector_.CheckForOptimizationEvent();
   return submap_list;
 }
 
