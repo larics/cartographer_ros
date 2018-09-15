@@ -98,8 +98,8 @@ class Detector {
           pose(submap_data.pose), /* * submap.local_pose().inverse() *
               cartographer::transform::Rigid3d::Translation(
                   (Eigen::Vector3d() << limits.max(), 0.).finished())) */
-          to_global_position(
-              rigid3d_to_isometry2d(pose * submap.local_pose().inverse())),
+          local_pose_inverse(submap.local_pose().inverse()),
+          to_global_position(rigid3d_to_isometry2d(pose * local_pose_inverse)),
           to_local_submap_position(to_global_position.inverse()) {
       frontier_marker.header.frame_id = "map";
       frontier_marker.pose.orientation.w = 1.0;
@@ -116,6 +116,7 @@ class Detector {
     const cartographer::mapping::SubmapId id;
     const cartographer::mapping::Submap2D& submap;
     const cartographer::transform::Rigid3d pose;
+    const cartographer::transform::Rigid3d local_pose_inverse;
     const Eigen::Isometry2d to_global_position;
     const Eigen::Isometry2d to_local_submap_position;
     Eigen::Matrix2Xd cached_frontier_marker_cells_global;

@@ -392,13 +392,15 @@ void Detector::HandleSubmapUpdates(
         s_i.limits().max().y() -
         s_i.limits().resolution() * (offset.x() + cell_limits.num_x_cells);
 
-    const Eigen::Vector3d p1{max_x, max_y, 0.};
-    const Eigen::Vector3d p2{min_x, min_y, 0.};
+    const Eigen::Vector3d p1 =
+        s_i.local_pose_inverse * Eigen::Vector3d{max_x, max_y, 0.};
+    const Eigen::Vector3d p2 =
+        s_i.local_pose_inverse * Eigen::Vector3d{min_x, min_y, 0.};
     auto& bounding_box_info = bounding_boxes_[s_i.id];
     bounding_box_info.local_box = std::make_pair(p1, p2);
     bounding_box_info.last_global_box = CalculateBoundingBox(s_i);
 
-    if (s_i.submap.insertion_finished())
+    if (s_i.submap.insertion_finished() || true)
       for (const auto& previous_submap : previous_submaps_to_cleanup) {
         auto& previous_submap_frontier_cells =
             submap_frontier_cells_[previous_submap->id];
