@@ -30,8 +30,9 @@ void Detector::PublishAllSubmaps() {
   std::unique_lock<std::mutex> lock(mutex_);
 
   for (const auto& submap_data_i : submaps_.last_all_submap_data())
-    frontier_markers.markers.push_back(
-        CreateMarkerForSubmap(submap_data_i.id, nullptr, true));
+    frontier_markers.markers.push_back(CreateMarkerForSubmap(
+        submap_data_i.id, nullptr /* updated_submap_ids */,
+        true /* check_against_active */));
 
   frontier_publisher_.publish(frontier_markers);
 }
@@ -46,13 +47,15 @@ void Detector::PublishSubmaps(
   for (const auto& id_i : submap_ids) {
     // LOG(ERROR) << "publishing submap " << id_i.submap_index;
     frontier_markers.markers.push_back(
-        CreateMarkerForSubmap(id_i, nullptr, false));
+        CreateMarkerForSubmap(id_i, nullptr /* updated_submap_ids */,
+                              false /* check_against_active */));
   }
 
   for (const auto& id_additional : additional_submaps) {
     // LOG(ERROR) << "publishing submap " << id_i.submap_index;
-    frontier_markers.markers.push_back(
-        CreateMarkerForSubmap(id_additional, &submap_ids, false));
+    frontier_markers.markers.push_back(CreateMarkerForSubmap(
+        id_additional, &submap_ids /* updated_submap_ids */,
+        false /* check_against_active */));
   }
 
   frontier_publisher_.publish(frontier_markers);
