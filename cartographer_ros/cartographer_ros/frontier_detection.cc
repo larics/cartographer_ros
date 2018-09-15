@@ -328,7 +328,7 @@ void Detector::HandleSubmapUpdates(
                                       unknown_cells.block(2, 0, x_dim, y_dim) +
                                       unknown_cells.block(1, 0, x_dim, y_dim);
 
-    DynamicArray frontier(unknown_cells *
+    DynamicArray frontier(unknown_cells.block(1, 1, x_dim, y_dim) *
                           (unknown_neighbours >= 3u).cast<uint16_t>() *
                           (free_neighbours >= 3u).cast<uint16_t>());
 
