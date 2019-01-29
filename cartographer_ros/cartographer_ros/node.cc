@@ -114,6 +114,11 @@ Node::Node(
   service_servers_.push_back(node_handle_.advertiseService(
       kSubmapQueryServiceName, &Node::HandleSubmapQuery, this));
   service_servers_.push_back(node_handle_.advertiseService(
+      "get_trajectory_point_cloud", &Node::HandleGetTrajectoryPointCloud,
+      this));
+  service_servers_.push_back(node_handle_.advertiseService(
+      kSubmapCloudQueryServiceName, &Node::HandleSubmapCloudQuery, this));
+  service_servers_.push_back(node_handle_.advertiseService(
       kStartTrajectoryServiceName, &Node::HandleStartTrajectory, this));
   service_servers_.push_back(node_handle_.advertiseService(
       kFinishTrajectoryServiceName, &Node::HandleFinishTrajectory, this));
@@ -157,6 +162,13 @@ bool Node::HandleSubmapQuery(
   absl::MutexLock lock(&mutex_);
   map_builder_bridge_.HandleSubmapQuery(request, response);
   return true;
+}
+
+bool Node::HandleSubmapCloudQuery(
+    ::cartographer_ros_msgs::SubmapCloudQuery::Request& request,
+    ::cartographer_ros_msgs::SubmapCloudQuery::Response& response) {
+  carto::common::MutexLocker lock(&mutex_);
+  return map_builder_bridge_.HandleSubmapCloudQuery(request, response);
 }
 
 void Node::PublishSubmapList(const ::ros::WallTimerEvent& unused_timer_event) {

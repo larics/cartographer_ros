@@ -1,0 +1,9 @@
+int32 trajectory_id
+int32 submap_index
+float32 min_probability
+bool high_resolution
+---
+int32 submap_version
+float32 resolution
+bool finished
+sensor_msgs/PointCloud2 cloud

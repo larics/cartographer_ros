@@ -34,6 +34,7 @@
 #include "cartographer_ros_msgs/SubmapEntry.h"
 #include "cartographer_ros_msgs/SubmapList.h"
 #include "cartographer_ros_msgs/SubmapQuery.h"
+#include "cartographer_ros_msgs/SubmapCloudQuery.h"
 #include "nav_msgs/OccupancyGrid.h"
 
 // Abseil unfortunately pulls in winnt.h, which #defines DELETE.
@@ -43,6 +44,9 @@
 #endif
 #include "visualization_msgs/MarkerArray.h"
 
+#include "sensor_msgs/PointCloud2.h"
+#include "pcl_ros/point_cloud.h"
+#include "pcl/point_types.h"
 namespace cartographer_ros {
 
 class MapBuilderBridge {
@@ -88,6 +92,11 @@ class MapBuilderBridge {
   std::map<int /* trajectory_id */,
            ::cartographer::mapping::PoseGraphInterface::TrajectoryState>
   GetTrajectoryStates();
+
+  bool HandleSubmapCloudQuery(
+      cartographer_ros_msgs::SubmapCloudQuery::Request& request,
+      cartographer_ros_msgs::SubmapCloudQuery::Response& response);
+
   cartographer_ros_msgs::SubmapList GetSubmapList();
   std::unordered_map<int, LocalTrajectoryData> GetLocalTrajectoryData()
       LOCKS_EXCLUDED(mutex_);

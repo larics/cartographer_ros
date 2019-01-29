@@ -45,6 +45,7 @@
 #include "cartographer_ros_msgs/TrajectoryOptions.h"
 #include "cartographer_ros_msgs/WriteState.h"
 #include "nav_msgs/Odometry.h"
+#include "cartographer_ros_msgs/SubmapCloudQuery.h"
 #include "ros/ros.h"
 #include "sensor_msgs/Imu.h"
 #include "sensor_msgs/LaserScan.h"
@@ -155,6 +156,8 @@ class Node {
   ComputeExpectedSensorIds(
       const TrajectoryOptions& options,
       const cartographer_ros_msgs::SensorTopics& topics) const;
+  bool HandleSubmapCloudQuery(cartographer_ros_msgs::SubmapCloudQuery::Request& request,
+                        cartographer_ros_msgs::SubmapCloudQuery::Response& response);
   int AddTrajectory(const TrajectoryOptions& options,
                     const cartographer_ros_msgs::SensorTopics& topics);
   void LaunchSubscribers(const TrajectoryOptions& options,
