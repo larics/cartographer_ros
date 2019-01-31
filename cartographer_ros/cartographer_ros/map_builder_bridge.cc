@@ -29,7 +29,8 @@
 #include "cartographer_ros/msg_conversion.h"
 #include "cartographer_ros_msgs/StatusCode.h"
 #include "cartographer_ros_msgs/StatusResponse.h"
-#include "cartographer_ros/occupancy_grid.h"
+//#include "cartographer_ros/occupancy_grid.h"
+
 
 namespace cartographer_ros {
 namespace {
@@ -267,42 +268,6 @@ MapBuilderBridge::GetTrajectoryStates() {
   return trajectory_states;
 }
 
-bool MapBuilderBridge::HandleGetTrajectoryPointCloud(
-    happyending::GetTrajectoryPointCloud::Request& req,
-    happyending::GetTrajectoryPointCloud::Response& res) {
-  const auto all_trajectory_nodes =
-      map_builder_->pose_graph()->GetTrajectoryNodes();
-
-  res.not_available = false;
-  const cartographer::mapping::NodeId node_id{req.trajectory_id, req.node_id};
-  if (!all_trajectory_nodes.Contains(node_id)
-      || all_trajectory_nodes.at(node_id).constant_data == nullptr) {
-    res.not_available = true;
-    return true;
-  }
-
-  const auto& node = all_trajectory_nodes.at(node_id);
-
-  const auto point_cloud = node.constant_data->range_data.returns.Decompress();
-  cartographer::sensor::TimedPointCloud timed_point_cloud;
-  timed_point_cloud.reserve(point_cloud.size());
-  for (const Eigen::Vector3f point : point_cloud) {
-    Eigen::Vector4f point_time;
-    point_time << point, 0.f;
-    timed_point_cloud.push_back(point_time);
-  }
-  res.point_cloud = ToPointCloud2Message(
-      cartographer::common::ToUniversal(node.time()),
-      trajectory_options_[0].tracking_frame,
-      timed_point_cloud);
-  res.pose_transform.header.stamp = ToRos(node.time());
-  res.pose_transform.header.frame_id = node_options_.map_frame;
-  res.pose_transform.child_frame_id = trajectory_options_[0].published_frame;
-  res.pose_transform.transform = ToGeometryMsgTransform(node.global_pose);
-
-  return true;
-}
-
 bool MapBuilderBridge::HandleSubmapCloudQuery(
       cartographer_ros_msgs::SubmapCloudQuery::Request& request,
       cartographer_ros_msgs::SubmapCloudQuery::Response& response){
@@ -315,7 +280,7 @@ bool MapBuilderBridge::HandleSubmapCloudQuery(
     ::cartographer::mapping::proto::Submap protoSubmap;
     ::cartographer::mapping::proto::Submap* protoSubmapPtr = &protoSubmap;
 
-    submapData.submap->ToProto(protoSubmapPtr, true);
+    submapData.submap->ToProto(protoSubmapPtr);
     const cartographer::mapping::proto::Submap3D& submap3d = protoSubmap.submap_3d();
     const auto& hybrid_grid = request.high_resolution ?
                   submap3d.high_resolution_hybrid_grid() : submap3d.low_resolution_hybrid_grid();
