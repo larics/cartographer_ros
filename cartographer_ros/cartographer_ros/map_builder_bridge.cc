@@ -304,6 +304,36 @@ bool MapBuilderBridge::HandleSubmapCloudQuery(
   return false;
 }
 
+
+sensor_msgs::PointCloud2 MapBuilderBridge::HandleSubmapPointCloud(
+        cartographer_ros_msgs::SubmapCloud::Request& request,
+        cartographer_ros_msgs::SubmapCloud::Response& response){
+  sensor_msgs::PointCloud2 cloud;
+  auto submapDataMap = map_builder_->pose_graph()->GetAllSubmapData();
+  cartographer::mapping::SubmapId submap_id{request.trajectory_id,request.submap_index};
+  if(submapDataMap.Contains(submap_id)) {
+    const ::cartographer::mapping::PoseGraph::SubmapData& submapData
+          = submapDataMap.at(submap_id);
+    ::cartographer::mapping::proto::Submap protoSubmap;
+    ::cartographer::mapping::proto::Submap* protoSubmapPtr = &protoSubmap;
+
+    submapData.submap->ToProto(protoSubmapPtr);
+    const cartographer::mapping::proto::Submap3D& submap3d = protoSubmap.submap_3d();
+    const auto& hybrid_grid = request.high_resolution ?
+                  submap3d.high_resolution_hybrid_grid() : submap3d.low_resolution_hybrid_grid();
+    Eigen::Transform<float,3,Eigen::Affine> transform =
+              Eigen::Translation3f(submapData.pose.translation().x(),
+                                   submapData.pose.translation().y(),
+                                   submapData.pose.translation().z())
+                                   * Eigen::Quaternion<float>(
+                          submapData.pose.rotation().w(), submapData.pose.rotation().x(),
+                          submapData.pose.rotation().y(), submapData.pose.rotation().z());
+    auto cloud = CreateCloudFromHybridGrid(hybrid_grid, request.min_probability, transform);
+    response.cloud = cloud;
+  }
+  return cloud;
+}
+
 cartographer_ros_msgs::SubmapList MapBuilderBridge::GetSubmapList() {
   cartographer_ros_msgs::SubmapList submap_list;
   submap_list.header.stamp = ::ros::Time::now();

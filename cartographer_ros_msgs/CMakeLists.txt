@@ -47,6 +47,7 @@ add_message_files(
 add_service_files(
   DIRECTORY srv
   FILES
+    SubmapCloud.srv
     SubmapCloudQuery.srv
     FinishTrajectory.srv
     GetTrajectoryStates.srv

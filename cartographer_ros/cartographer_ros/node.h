@@ -46,6 +46,7 @@
 #include "cartographer_ros_msgs/WriteState.h"
 #include "nav_msgs/Odometry.h"
 #include "cartographer_ros_msgs/SubmapCloudQuery.h"
+#include "cartographer_ros_msgs/SubmapCloud.h"
 #include "ros/ros.h"
 #include "sensor_msgs/Imu.h"
 #include "sensor_msgs/LaserScan.h"
@@ -158,6 +159,9 @@ class Node {
       const cartographer_ros_msgs::SensorTopics& topics) const;
   bool HandleSubmapCloudQuery(cartographer_ros_msgs::SubmapCloudQuery::Request& request,
                         cartographer_ros_msgs::SubmapCloudQuery::Response& response);
+
+  bool HandleSubmapPointCloud(cartographer_ros_msgs::SubmapCloud::Request& request,
+                        cartographer_ros_msgs::SubmapCloud::Response& response);
   int AddTrajectory(const TrajectoryOptions& options,
                     const cartographer_ros_msgs::SensorTopics& topics);
   void LaunchSubscribers(const TrajectoryOptions& options,
@@ -189,6 +193,7 @@ class Node {
   ::ros::Publisher trajectory_node_list_publisher_;
   ::ros::Publisher landmark_poses_list_publisher_;
   ::ros::Publisher constraint_list_publisher_;
+  ::ros::Publisher submap_cloud_publisher_;
   // These ros::ServiceServers need to live for the lifetime of the node.
   std::vector<::ros::ServiceServer> service_servers_;
   ::ros::Publisher scan_matched_point_cloud_publisher_;
