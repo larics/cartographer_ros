@@ -117,8 +117,8 @@ Node::Node(
 
   service_servers_.push_back(node_handle_.advertiseService(
       kSubmapQueryServiceName, &Node::HandleSubmapQuery, this));
-  //service_servers_.push_back(node_handle_.advertiseService(
-    //  kSubmapCloudQueryServiceName, &Node::HandleSubmapCloudQuery, this));
+  service_servers_.push_back(node_handle_.advertiseService(
+      kSubmapCloudQueryServiceName, &Node::HandleSubmapCloudQuery, this));
   service_servers_.push_back(node_handle_.advertiseService(
       kStartTrajectoryServiceName, &Node::HandleStartTrajectory, this));
   service_servers_.push_back(node_handle_.advertiseService(
@@ -130,7 +130,7 @@ Node::Node(
   service_servers_.push_back(node_handle_.advertiseService(
       kReadMetricsServiceName, &Node::HandleReadMetrics, this));
   service_servers_.push_back(node_handle_.advertiseService(
-      kSubmapCloudQueryServiceName, &Node::HandleSubmapPointCloud, this));
+      "submap_cloud_service", &Node::HandleSubmapPointCloud, this));
 
   scan_matched_point_cloud_publisher_ =
       node_handle_.advertise<sensor_msgs::PointCloud2>(
@@ -178,7 +178,8 @@ bool Node::HandleSubmapPointCloud(
     ::cartographer_ros_msgs::SubmapCloud::Request& request,
     ::cartographer_ros_msgs::SubmapCloud::Response& response) {
     absl::MutexLock lock(&mutex_);
-    submap_cloud_publisher_.publish(map_builder_bridge_.HandleSubmapPointCloud(request, response));
+    sensor_msgs::PointCloud2 cloud = map_builder_bridge_.HandleSubmapPointCloud(request, response); 
+    submap_cloud_publisher_.publish(cloud);
     return true;
 }
 

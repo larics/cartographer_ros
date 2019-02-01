@@ -331,7 +331,7 @@ sensor_msgs::PointCloud2 MapBuilderBridge::HandleSubmapPointCloud(
     auto cloud = CreateCloudFromHybridGrid(hybrid_grid, request.min_probability, transform);
     response.cloud = cloud;
   }
-  return cloud;
+  return response.cloud;
 }
 
 cartographer_ros_msgs::SubmapList MapBuilderBridge::GetSubmapList() {
