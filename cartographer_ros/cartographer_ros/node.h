@@ -160,8 +160,7 @@ class Node {
   bool HandleSubmapCloudQuery(cartographer_ros_msgs::SubmapCloudQuery::Request& request,
                         cartographer_ros_msgs::SubmapCloudQuery::Response& response);
 
-  bool HandleSubmapPointCloud(cartographer_ros_msgs::SubmapCloud::Request& request,
-                        cartographer_ros_msgs::SubmapCloud::Response& response);
+  void PublishSubmapPointCloud(const ::ros::WallTimerEvent& timer_event);
   int AddTrajectory(const TrajectoryOptions& options,
                     const cartographer_ros_msgs::SensorTopics& topics);
   void LaunchSubscribers(const TrajectoryOptions& options,

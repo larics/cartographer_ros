@@ -1,3 +1,4 @@
+
 /*
  * Copyright 2016 The Cartographer Authors
  *
@@ -129,9 +130,6 @@ Node::Node(
       kGetTrajectoryStatesServiceName, &Node::HandleGetTrajectoryStates, this));
   service_servers_.push_back(node_handle_.advertiseService(
       kReadMetricsServiceName, &Node::HandleReadMetrics, this));
-  service_servers_.push_back(node_handle_.advertiseService(
-      "submap_cloud_service", &Node::HandleSubmapPointCloud, this));
-
   scan_matched_point_cloud_publisher_ =
       node_handle_.advertise<sensor_msgs::PointCloud2>(
           kScanMatchedPointCloudTopic, kLatestOnlyPublisherQueueSize);
@@ -139,6 +137,11 @@ Node::Node(
   wall_timers_.push_back(node_handle_.createWallTimer(
       ::ros::WallDuration(node_options_.submap_publish_period_sec),
       &Node::PublishSubmapList, this));
+
+  wall_timers_.push_back(node_handle_.createWallTimer(
+      ::ros::WallDuration(node_options_.submap_publish_period_sec),
+      &Node::PublishSubmapPointCloud, this));
+
   if (node_options_.pose_publish_period_sec > 0) {
     publish_local_trajectory_data_timer_ = node_handle_.createTimer(
         ::ros::Duration(node_options_.pose_publish_period_sec),
@@ -174,13 +177,10 @@ bool Node::HandleSubmapCloudQuery(
   return map_builder_bridge_.HandleSubmapCloudQuery(request, response);
 }
 
-bool Node::HandleSubmapPointCloud(
-    ::cartographer_ros_msgs::SubmapCloud::Request& request,
-    ::cartographer_ros_msgs::SubmapCloud::Response& response) {
+void Node::PublishSubmapPointCloud(const ::ros::WallTimerEvent& unused_timer_event){
     absl::MutexLock lock(&mutex_);
-    sensor_msgs::PointCloud2 cloud = map_builder_bridge_.HandleSubmapPointCloud(request, response); 
+    sensor_msgs::PointCloud2 cloud = map_builder_bridge_.CreateSubmapPointCloud(); 
     submap_cloud_publisher_.publish(cloud);
-    return true;
 }
 
 void Node::PublishSubmapList(const ::ros::WallTimerEvent& unused_timer_event) {

@@ -148,7 +148,7 @@ sensor_msgs::PointCloud2 CreateCloudFromHybridGrid(
         ++iter_intensity;
       }
     }
-  return cloud;
+      return cloud;
 }
 
 }  // namespace
@@ -299,18 +299,30 @@ bool MapBuilderBridge::HandleSubmapCloudQuery(
     response.submap_version = submap3d.num_range_data();
     response.finished = submap3d.finished();
     response.resolution = hybrid_grid.resolution();
+    std::cout<<"Point cloud data je:"<<cloud;
     return true;
   }
   return false;
 }
 
 
-sensor_msgs::PointCloud2 MapBuilderBridge::HandleSubmapPointCloud(
-        cartographer_ros_msgs::SubmapCloud::Request& request,
-        cartographer_ros_msgs::SubmapCloud::Response& response){
+sensor_msgs::PointCloud2 MapBuilderBridge::CreateSubmapPointCloud(){
   sensor_msgs::PointCloud2 cloud;
+  const int min_probability = 0;
+  const int mTrajectory = 0;
+  bool high_resolution = false;
+  cartographer::mapping::SubmapId submap_id{0, 0};
   auto submapDataMap = map_builder_->pose_graph()->GetAllSubmapData();
-  cartographer::mapping::SubmapId submap_id{request.trajectory_id,request.submap_index};
+  
+  if (submapDataMap.SizeOfTrajectoryOrZero(mTrajectory) == 1){
+    submap_id = submapDataMap.BeginOfTrajectory(mTrajectory)->id;
+  if (submapDataMap.SizeOfTrajectoryOrZero(mTrajectory) > 1){
+    auto it = submapDataMap.EndOfTrajectory(mTrajectory);
+    std::advance (it, -2);
+    submap_id = it->id;    
+  }
+} 
+  
   if(submapDataMap.Contains(submap_id)) {
     const ::cartographer::mapping::PoseGraph::SubmapData& submapData
           = submapDataMap.at(submap_id);
@@ -319,7 +331,7 @@ sensor_msgs::PointCloud2 MapBuilderBridge::HandleSubmapPointCloud(
 
     submapData.submap->ToProto(protoSubmapPtr);
     const cartographer::mapping::proto::Submap3D& submap3d = protoSubmap.submap_3d();
-    const auto& hybrid_grid = request.high_resolution ?
+    const auto& hybrid_grid = high_resolution ?
                   submap3d.high_resolution_hybrid_grid() : submap3d.low_resolution_hybrid_grid();
     Eigen::Transform<float,3,Eigen::Affine> transform =
               Eigen::Translation3f(submapData.pose.translation().x(),
@@ -328,10 +340,13 @@ sensor_msgs::PointCloud2 MapBuilderBridge::HandleSubmapPointCloud(
                                    * Eigen::Quaternion<float>(
                           submapData.pose.rotation().w(), submapData.pose.rotation().x(),
                           submapData.pose.rotation().y(), submapData.pose.rotation().z());
-    auto cloud = CreateCloudFromHybridGrid(hybrid_grid, request.min_probability, transform);
-    response.cloud = cloud;
+    auto cloud = CreateCloudFromHybridGrid(hybrid_grid, min_probability, transform);
+    cloud.header.frame_id = node_options_.map_frame;
+    cloud.header.stamp = ros::Time::now();
+    //std::cout<<"Poin cloud je:"<<cloud;
+    return cloud;
   }
-  return response.cloud;
+  return cloud;
 }
 
 cartographer_ros_msgs::SubmapList MapBuilderBridge::GetSubmapList() {

@@ -98,9 +98,7 @@ class MapBuilderBridge {
       cartographer_ros_msgs::SubmapCloudQuery::Request& request,
       cartographer_ros_msgs::SubmapCloudQuery::Response& response);
 
-  sensor_msgs::PointCloud2 HandleSubmapPointCloud(
-      cartographer_ros_msgs::SubmapCloud::Request& request,
-      cartographer_ros_msgs::SubmapCloud::Response& response);
+  sensor_msgs::PointCloud2 CreateSubmapPointCloud();
 
   cartographer_ros_msgs::SubmapList GetSubmapList();
   std::unordered_map<int, LocalTrajectoryData> GetLocalTrajectoryData()
