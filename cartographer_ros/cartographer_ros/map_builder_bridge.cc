@@ -304,7 +304,7 @@ bool MapBuilderBridge::HandleSubmapCloudQuery(
 }
 
 
-sensor_msgs::PointCloud2 MapBuilderBridge::CreateLastSubmapPointCloud(){
+bool MapBuilderBridge::CreateLastSubmapPointCloud(sensor_msgs::PointCloud2& cloud) {
   const double min_probability = 0.5;
   const int trajectory_id = 0;
   bool high_resolution = true;
@@ -337,13 +337,14 @@ sensor_msgs::PointCloud2 MapBuilderBridge::CreateLastSubmapPointCloud(){
                                    * Eigen::Quaternion<float>(
                           submap_data.pose.rotation().w(), submap_data.pose.rotation().x(),
                           submap_data.pose.rotation().y(), submap_data.pose.rotation().z());
-    auto cloud = CreateCloudFromHybridGrid(hybrid_grid, min_probability, transform);
+    cloud = CreateCloudFromHybridGrid(hybrid_grid, min_probability, transform);
     cloud.header.frame_id = node_options_.map_frame;
     cloud.header.stamp = ros::Time::now();
-    return cloud;
+    return true;
   }
   else {
-    LOG(FATAL)<< "Last submap not found";
+    LOG(ERROR)<< "Last submap not found";
+    return false;
   }
 }
 
