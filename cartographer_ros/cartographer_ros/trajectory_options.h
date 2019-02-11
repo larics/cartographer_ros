@@ -35,6 +35,7 @@ struct TrajectoryOptions {
   bool provide_odom_frame;
   bool use_odometry;
   bool use_nav_sat;
+  double nav_sat_translation_weight;
   bool use_landmarks;
   bool publish_frame_projected_to_2d;
   int num_laser_scans;

@@ -80,7 +80,8 @@ Eigen::Vector3d LatLongAltToEcef(double latitude, double longitude,
 // Returns a transform that takes ECEF coordinates from nearby points to a local
 // frame that has z pointing upwards.
 cartographer::transform::Rigid3d ComputeLocalFrameFromLatLong(double latitude,
-                                                              double longitude);
+                                                              double longitude,
+                                                              double altitude);
 
 // Points to an occupancy grid message at a specific resolution from painted
 // submap slices obtained via ::cartographer::io::PaintSubmapSlices(...).

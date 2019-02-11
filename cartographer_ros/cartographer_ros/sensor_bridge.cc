@@ -43,10 +43,12 @@ SensorBridge::SensorBridge(
     const int num_subdivisions_per_laser_scan,
     const std::string& tracking_frame,
     const double lookup_transform_timeout_sec, tf2_ros::Buffer* const tf_buffer,
-    carto::mapping::TrajectoryBuilderInterface* const trajectory_builder)
+    carto::mapping::TrajectoryBuilderInterface* const trajectory_builder,
+    const double nav_sat_translation_weight)
     : num_subdivisions_per_laser_scan_(num_subdivisions_per_laser_scan),
       tf_bridge_(tracking_frame, lookup_transform_timeout_sec, tf_buffer),
-      trajectory_builder_(trajectory_builder) {}
+      trajectory_builder_(trajectory_builder),
+      nav_sat_translation_weight_(nav_sat_translation_weight) {}
 
 std::unique_ptr<carto::sensor::OdometryData> SensorBridge::ToOdometryData(
     const nav_msgs::Odometry::ConstPtr& msg) {
@@ -74,27 +76,35 @@ void SensorBridge::HandleOdometryMessage(
 
 void SensorBridge::HandleNavSatFixMessage(
     const std::string& sensor_id, const sensor_msgs::NavSatFix::ConstPtr& msg) {
-  const carto::common::Time time = FromRos(msg->header.stamp);
   if (msg->status.status == sensor_msgs::NavSatStatus::STATUS_NO_FIX) {
-    trajectory_builder_->AddSensorData(
-        sensor_id,
-        carto::sensor::FixedFramePoseData{time, absl::optional<Rigid3d>()});
+    // If collation is turned off, we do not have to insert "no observations"
+    // into the sensor queue.
     return;
   }
 
   if (!ecef_to_local_frame_.has_value()) {
     ecef_to_local_frame_ =
-        ComputeLocalFrameFromLatLong(msg->latitude, msg->longitude);
+        ComputeLocalFrameFromLatLong(msg->latitude, msg->longitude,
+            msg->altitude);
     LOG(INFO) << "Using NavSatFix. Setting ecef_to_local_frame with lat = "
-              << msg->latitude << ", long = " << msg->longitude << ".";
+              << msg->latitude << ", long = " << msg->longitude
+              << ", alt = " << msg->altitude;
   }
 
   trajectory_builder_->AddSensorData(
-      sensor_id, carto::sensor::FixedFramePoseData{
-                     time, absl::optional<Rigid3d>(Rigid3d::Translation(
-                               ecef_to_local_frame_.value() *
-                               LatLongAltToEcef(msg->latitude, msg->longitude,
-                                                msg->altitude)))});
+      sensor_id, carto::sensor::LandmarkData{
+          cartographer_ros::FromRos(msg->header.stamp),
+          std::vector<
+              carto::sensor::
+              LandmarkObservation>{carto::sensor::LandmarkObservation{
+                  "fixed",
+                  Rigid3d::Translation(
+                      ecef_to_local_frame_.value() *
+                      LatLongAltToEcef(msg->latitude, msg->longitude,
+                                       msg->altitude)),
+                  nav_sat_translation_weight_,
+                  0. /* rotation_weight */,
+                  false /* observed_from_tracking */}}});
 }
 
 void SensorBridge::HandleLandmarkMessage(
