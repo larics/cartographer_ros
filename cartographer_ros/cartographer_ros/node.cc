@@ -40,6 +40,7 @@
 #include "cartographer_ros_msgs/StatusCode.h"
 #include "cartographer_ros_msgs/StatusResponse.h"
 #include "glog/logging.h"
+#include "nav_msgs/Path.h"
 #include "nav_msgs/Odometry.h"
 #include "ros/serialization.h"
 #include "sensor_msgs/PointCloud2.h"
@@ -281,9 +282,16 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
   }
 }
 
+ros::Publisher* pathpub = nullptr;
+
 void Node::PublishTrajectoryNodeList(
     const ::ros::WallTimerEvent& unused_timer_event) {
-  if (trajectory_node_list_publisher_.getNumSubscribers() > 0) {
+  if (pathpub == nullptr) {
+    pathpub = new ros::Publisher();
+    *pathpub = ros::NodeHandle().advertise<nav_msgs::Path>("path", 1);
+  }
+  if (trajectory_node_list_publisher_.getNumSubscribers() > 0 ||
+      pathpub->getNumSubscribers() > 0) {
     absl::MutexLock lock(&mutex_);
     trajectory_node_list_publisher_.publish(
         map_builder_bridge_.GetTrajectoryNodeList());

@@ -76,9 +76,8 @@ void SensorBridge::HandleNavSatFixMessage(
     const std::string& sensor_id, const sensor_msgs::NavSatFix::ConstPtr& msg) {
   const carto::common::Time time = FromRos(msg->header.stamp);
   if (msg->status.status == sensor_msgs::NavSatStatus::STATUS_NO_FIX) {
-    trajectory_builder_->AddSensorData(
-        sensor_id,
-        carto::sensor::FixedFramePoseData{time, absl::optional<Rigid3d>()});
+    // If collation is turned off, we do not have to insert "no observations"
+    // into the sensor queue.
     return;
   }
 
@@ -90,11 +89,19 @@ void SensorBridge::HandleNavSatFixMessage(
   }
 
   trajectory_builder_->AddSensorData(
-      sensor_id, carto::sensor::FixedFramePoseData{
-                     time, absl::optional<Rigid3d>(Rigid3d::Translation(
-                               ecef_to_local_frame_.value() *
-                               LatLongAltToEcef(msg->latitude, msg->longitude,
-                                                msg->altitude)))});
+      sensor_id, carto::sensor::LandmarkData{
+          cartographer_ros::FromRos(msg->header.stamp),
+          std::vector<
+              carto::sensor::
+              LandmarkObservation>{carto::sensor::LandmarkObservation{
+                  "fixed",
+                  Rigid3d::Translation(
+                      ecef_to_local_frame_.value() *
+                      LatLongAltToEcef(msg->latitude, msg->longitude,
+                                       msg->altitude)),
+                  1,
+                  0. /* rotation_weight */,
+                  false /* observed_from_tracking */}}});
 }
 
 void SensorBridge::HandleLandmarkMessage(
