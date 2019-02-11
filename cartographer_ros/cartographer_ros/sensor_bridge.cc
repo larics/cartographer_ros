@@ -43,10 +43,12 @@ SensorBridge::SensorBridge(
     const int num_subdivisions_per_laser_scan,
     const std::string& tracking_frame,
     const double lookup_transform_timeout_sec, tf2_ros::Buffer* const tf_buffer,
-    carto::mapping::TrajectoryBuilderInterface* const trajectory_builder)
+    carto::mapping::TrajectoryBuilderInterface* const trajectory_builder,
+    const double nav_sat_translation_weight)
     : num_subdivisions_per_laser_scan_(num_subdivisions_per_laser_scan),
       tf_bridge_(tracking_frame, lookup_transform_timeout_sec, tf_buffer),
-      trajectory_builder_(trajectory_builder) {}
+      trajectory_builder_(trajectory_builder),
+      nav_sat_translation_weight_(nav_sat_translation_weight) {}
 
 std::unique_ptr<carto::sensor::OdometryData> SensorBridge::ToOdometryData(
     const nav_msgs::Odometry::ConstPtr& msg) {
@@ -74,7 +76,6 @@ void SensorBridge::HandleOdometryMessage(
 
 void SensorBridge::HandleNavSatFixMessage(
     const std::string& sensor_id, const sensor_msgs::NavSatFix::ConstPtr& msg) {
-  const carto::common::Time time = FromRos(msg->header.stamp);
   if (msg->status.status == sensor_msgs::NavSatStatus::STATUS_NO_FIX) {
     // If collation is turned off, we do not have to insert "no observations"
     // into the sensor queue.
@@ -99,7 +100,7 @@ void SensorBridge::HandleNavSatFixMessage(
                       ecef_to_local_frame_.value() *
                       LatLongAltToEcef(msg->latitude, msg->longitude,
                                        msg->altitude)),
-                  1,
+                  nav_sat_translation_weight_,
                   0. /* rotation_weight */,
                   false /* observed_from_tracking */}}});
 }
