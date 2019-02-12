@@ -180,9 +180,11 @@ bool Node::HandleSubmapCloudQuery(
 
 void Node::PublishSubmapPointCloud(const ::ros::WallTimerEvent& unused_timer_event){
     absl::MutexLock lock(&mutex_);
-    sensor_msgs::PointCloud2 cloud;
-    if (map_builder_bridge_.CreateLastSubmapPointCloud(cloud)) {
-      submap_cloud_publisher_.publish(cloud);
+    if (submap_cloud_publisher_.getNumSubscribers() > 0) {
+      sensor_msgs::PointCloud2 cloud;
+      if (map_builder_bridge_.CreateLastSubmapPointCloud(cloud)) {
+        submap_cloud_publisher_.publish(cloud);
+      }
     }
 }
 
