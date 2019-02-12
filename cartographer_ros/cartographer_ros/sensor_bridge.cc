@@ -74,12 +74,25 @@ void SensorBridge::HandleOdometryMessage(
   }
 }
 
+ros::Publisher* ecef_to_local_pub;
+ros::Publisher* ecef_to_local_fix_pub;
 void SensorBridge::HandleNavSatFixMessage(
     const std::string& sensor_id, const sensor_msgs::NavSatFix::ConstPtr& msg) {
   if (msg->status.status == sensor_msgs::NavSatStatus::STATUS_NO_FIX) {
     // If collation is turned off, we do not have to insert "no observations"
     // into the sensor queue.
     return;
+  }
+
+  if (ecef_to_local_pub == nullptr) {
+    ecef_to_local_pub = new ros::Publisher();
+    *ecef_to_local_pub =
+        ros::NodeHandle().advertise<geometry_msgs::Transform>("ecef_to_local", 1, true);
+  }
+  if (ecef_to_local_fix_pub == nullptr) {
+    ecef_to_local_fix_pub = new ros::Publisher();
+    *ecef_to_local_fix_pub =
+      ros::NodeHandle().advertise<sensor_msgs::NavSatFix>("ecef_to_local_navsat_fix", 1, true);
   }
 
   if (!ecef_to_local_frame_.has_value()) {
@@ -89,6 +102,8 @@ void SensorBridge::HandleNavSatFixMessage(
     LOG(INFO) << "Using NavSatFix. Setting ecef_to_local_frame with lat = "
               << msg->latitude << ", long = " << msg->longitude
               << ", alt = " << msg->altitude;
+    ecef_to_local_pub->publish(ToGeometryMsgTransform(ecef_to_local_frame_.value()));
+    ecef_to_local_fix_pub->publish(msg);
   }
 
   trajectory_builder_->AddSensorData(
