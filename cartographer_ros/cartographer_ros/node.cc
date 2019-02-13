@@ -237,8 +237,8 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
     static Rigid3d previous_pose = Rigid3d::Identity();
     static bool interpolation_active = false;
     static ros::Time interpolation_start_time;
-    const int curent_pgo_id = cartographer::mapping::number_of_pose_graph_optimizations;
-    if (previous_pgo_id != curent_pgo_id) {
+    const int current_pgo_id = cartographer::mapping::number_of_pose_graph_optimizations;
+    if (previous_pgo_id != current_pgo_id) {
       interpolation_active = true;
       interpolation_start_time = ros::Time::now();
       interpolation_start_pose = previous_pose;
@@ -264,7 +264,7 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
       interpolated_local_to_map = trajectory_data.local_to_map;
     }
     previous_pose = interpolated_local_to_map;
-    previous_pgo_id = curent_pgo_id;
+    previous_pgo_id = current_pgo_id;
 
     //std::cout << "PGOs: " <<
     //          <<" local_to_map: " << trajectory_data.local_to_map << std::endl;
