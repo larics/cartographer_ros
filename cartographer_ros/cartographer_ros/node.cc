@@ -48,6 +48,12 @@
 #include "tf2_eigen/tf2_eigen.h"
 #include "visualization_msgs/MarkerArray.h"
 
+namespace cartographer {
+namespace mapping {
+extern std::atomic<int> number_of_pose_graph_optimizations;
+}
+}
+
 namespace cartographer_ros {
 
 namespace {
@@ -226,6 +232,44 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
   for (const auto& entry : map_builder_bridge_.GetLocalTrajectoryData()) {
     const auto& trajectory_data = entry.second;
 
+    static int previous_pgo_id = 0;
+    static Rigid3d interpolation_start_pose = Rigid3d::Identity();
+    static Rigid3d previous_pose = Rigid3d::Identity();
+    static bool interpolation_active = false;
+    static ros::Time interpolation_start_time;
+    const int curent_pgo_id = cartographer::mapping::number_of_pose_graph_optimizations;
+    if (previous_pgo_id != curent_pgo_id) {
+      interpolation_active = true;
+      interpolation_start_time = ros::Time::now();
+      interpolation_start_pose = previous_pose;
+      // std::cout << "!!!!!!!! Interpolation STARTED" << std::endl;
+    }
+    Rigid3d interpolated_local_to_map;
+    if (interpolation_active) {
+      const double time_delta = (ros::Time::now() - interpolation_start_time).toSec();
+      const double interpolation_factor = 1./(1.+exp(-(time_delta-3.)*1.5));
+      if (time_delta < 6.0) {
+        interpolated_local_to_map = {
+            interpolation_start_pose.translation() * interpolation_factor
+            + (1. - interpolation_factor) * trajectory_data.local_to_map.translation(),
+            interpolation_start_pose.rotation().slerp(
+                interpolation_factor, trajectory_data.local_to_map.rotation())
+        };
+      } else {
+        interpolation_active = false;
+        // std::cout << "!!!!!!!! Interpolation FINISHED" << std::endl;
+      }
+    }
+    if (!interpolation_active) {
+      interpolated_local_to_map = trajectory_data.local_to_map;
+    }
+    previous_pose = interpolated_local_to_map;
+    previous_pgo_id = curent_pgo_id;
+
+    //std::cout << "PGOs: " <<
+    //          <<" local_to_map: " << trajectory_data.local_to_map << std::endl;
+
+
     auto& extrapolator = extrapolators_.at(entry.first);
     // We only publish a point cloud if it has changed. It is not needed at high
     // frequency, and republishing it would be computationally wasteful.
@@ -246,7 +290,7 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
             carto::common::ToUniversal(trajectory_data.local_slam_data->time),
             node_options_.map_frame,
             carto::sensor::TransformTimedPointCloud(
-                point_cloud, trajectory_data.local_to_map.cast<float>())));
+                point_cloud, interpolated_local_to_map.cast<float>())));
       }
       extrapolator.AddPose(trajectory_data.local_slam_data->time,
                            trajectory_data.local_slam_data->local_pose);
@@ -276,7 +320,7 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
     }();
 
     const Rigid3d tracking_to_map =
-        trajectory_data.local_to_map * tracking_to_local;
+        interpolated_local_to_map * tracking_to_local;
 
     if (trajectory_data.published_to_tracking != nullptr) {
       if (trajectory_data.trajectory_options.provide_odom_frame) {
@@ -286,7 +330,7 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
         stamped_transform.child_frame_id =
             trajectory_data.trajectory_options.odom_frame;
         stamped_transform.transform =
-            ToGeometryMsgTransform(trajectory_data.local_to_map);
+            ToGeometryMsgTransform(interpolated_local_to_map);
         stamped_transforms.push_back(stamped_transform);
 
         stamped_transform.header.frame_id =
