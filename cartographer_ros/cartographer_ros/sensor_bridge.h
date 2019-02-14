@@ -46,7 +46,8 @@ class SensorBridge {
       int num_subdivisions_per_laser_scan, const std::string& tracking_frame,
       double lookup_transform_timeout_sec, tf2_ros::Buffer* tf_buffer,
       ::cartographer::mapping::TrajectoryBuilderInterface* trajectory_builder,
-      double nav_sat_translation_weight);
+      double nav_sat_translation_weight,
+      const sensor_msgs::NavSatFix::ConstPtr& predefined_enu_frame_position);
 
   SensorBridge(const SensorBridge&) = delete;
   SensorBridge& operator=(const SensorBridge&) = delete;
@@ -94,6 +95,8 @@ class SensorBridge {
 
   absl::optional<::cartographer::transform::Rigid3d> ecef_to_local_frame_;
   const double nav_sat_translation_weight_;
+  // nullptr: use first NavSatFix to place ENU frame
+  const sensor_msgs::NavSatFix::ConstPtr predefined_enu_frame_position_;
 };
 
 }  // namespace cartographer_ros

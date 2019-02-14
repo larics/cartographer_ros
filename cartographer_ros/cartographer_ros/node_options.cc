@@ -44,6 +44,14 @@ NodeOptions CreateNodeOptions(
     options.use_pose_extrapolator =
         lua_parameter_dictionary->GetBool("use_pose_extrapolator");
   }
+  options.nav_sat_use_predefined_enu_frame =
+      lua_parameter_dictionary->GetBool("nav_sat_use_predefined_enu_frame");
+  options.nav_sat_predefined_enu_frame_lat_deg =
+      lua_parameter_dictionary->GetDouble("nav_sat_predefined_enu_frame_lat_deg");
+  options.nav_sat_predefined_enu_frame_lon_deg =
+      lua_parameter_dictionary->GetDouble("nav_sat_predefined_enu_frame_lon_deg");
+  options.nav_sat_predefined_enu_frame_alt_m =
+      lua_parameter_dictionary->GetDouble("nav_sat_predefined_enu_frame_alt_m");
   return options;
 }
 
