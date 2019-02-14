@@ -36,6 +36,10 @@ struct NodeOptions {
   double pose_publish_period_sec;
   double trajectory_publish_period_sec;
   bool use_pose_extrapolator = true;
+  bool nav_sat_use_predefined_enu_frame;
+  double nav_sat_predefined_enu_frame_lat_deg;
+  double nav_sat_predefined_enu_frame_lon_deg;
+  double nav_sat_predefined_enu_frame_alt_m;
 };
 
 NodeOptions CreateNodeOptions(
