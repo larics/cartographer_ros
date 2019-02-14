@@ -248,10 +248,10 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
     if (interpolation_active) {
       const double time_delta = (ros::Time::now() - interpolation_start_time).toSec();
       const double interpolation_factor = 1./(1.+exp(-(time_delta-3.)*1.5));
-      if (time_delta < 6.0) {
+      if (time_delta < 7.0) {
         interpolated_local_to_map = {
-            interpolation_start_pose.translation() * interpolation_factor
-            + (1. - interpolation_factor) * trajectory_data.local_to_map.translation(),
+            interpolation_start_pose.translation() * (1. - interpolation_factor)
+            + interpolation_factor * trajectory_data.local_to_map.translation(),
             interpolation_start_pose.rotation().slerp(
                 interpolation_factor, trajectory_data.local_to_map.rotation())
         };
