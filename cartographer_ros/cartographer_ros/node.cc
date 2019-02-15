@@ -137,6 +137,9 @@ Node::Node(
       kGetTrajectoryStatesServiceName, &Node::HandleGetTrajectoryStates, this));
   service_servers_.push_back(node_handle_.advertiseService(
       kReadMetricsServiceName, &Node::HandleReadMetrics, this));
+  service_servers_.push_back(node_handle_.advertiseService(
+      kWriteEcefTrajectoryServiceName, &Node::HandleWriteEcefTrajectory, this));
+
   scan_matched_point_cloud_publisher_ =
       node_handle_.advertise<sensor_msgs::PointCloud2>(
           kScanMatchedPointCloudTopic, kLatestOnlyPublisherQueueSize);
@@ -356,6 +359,8 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
 
 ros::Publisher* pathpub = nullptr;
 
+
+
 void Node::PublishTrajectoryNodeList(
     const ::ros::WallTimerEvent& unused_timer_event) {
   if (pathpub == nullptr) {
@@ -368,6 +373,46 @@ void Node::PublishTrajectoryNodeList(
     trajectory_node_list_publisher_.publish(
         map_builder_bridge_.GetTrajectoryNodeList());
   }
+}
+
+bool Node::HandleWriteEcefTrajectory(
+    ::cartographer_ros_msgs::WriteEcefTrajectory::Request& request,
+    ::cartographer_ros_msgs::WriteEcefTrajectory::Response& response) {
+  absl::MutexLock lock(&mutex_);
+  auto& ecef_to_local_frame = SensorBridge::ecef_to_local_frame();
+  if (!ecef_to_local_frame.has_value()) {
+    sensor_msgs::NavSatFix::Ptr predefined_enu_frame_position = nullptr;
+    if (node_options_.nav_sat_use_predefined_enu_frame) {
+      predefined_enu_frame_position =
+          boost::make_shared<sensor_msgs::NavSatFix>();
+      predefined_enu_frame_position->latitude =
+          node_options_.nav_sat_predefined_enu_frame_lat_deg;
+      predefined_enu_frame_position->longitude =
+          node_options_.nav_sat_predefined_enu_frame_lon_deg;
+      predefined_enu_frame_position->altitude =
+          node_options_.nav_sat_predefined_enu_frame_alt_m;
+    }
+    if (predefined_enu_frame_position == nullptr) {
+      response.status.code = cartographer_ros_msgs::StatusCode::ABORTED;
+      response.status.message = "Missing ecef to local";
+      return true;
+    }
+    ecef_to_local_frame =
+        ComputeLocalFrameFromLatLong(predefined_enu_frame_position->latitude,
+                                     predefined_enu_frame_position->longitude,
+                                     predefined_enu_frame_position->altitude);
+  }
+  const auto trajectory_nodes = map_builder_bridge_.GetTrajectoryNodes();
+  std::ofstream output(request.filename);
+  output.precision(20);
+  for (const auto& trajectory_node : trajectory_nodes) {
+    const auto node_in_ecef =
+        ecef_to_local_frame.value() * trajectory_node.data.global_pose;
+    output << node_in_ecef.translation().x() << " "
+           << node_in_ecef.translation().y() << " "
+           << node_in_ecef.translation().z() << std::endl;
+  }
+  return true;
 }
 
 void Node::PublishLandmarkPosesList(

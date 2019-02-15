@@ -55,6 +55,7 @@ add_service_files(
     StartTrajectory.srv
     SubmapQuery.srv
     WriteState.srv
+    WriteEcefTrajectory.srv
 )
 
 generate_messages(

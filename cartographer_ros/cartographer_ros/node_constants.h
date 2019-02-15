@@ -43,6 +43,7 @@ constexpr char kTrajectoryNodeListTopic[] = "trajectory_node_list";
 constexpr char kLandmarkPosesListTopic[] = "landmark_poses_list";
 constexpr char kConstraintListTopic[] = "constraint_list";
 constexpr char kSubmapCloudQueryServiceName[] = "submap_cloud_query";
+constexpr char kWriteEcefTrajectoryServiceName[] = "write_ecef_trajectory";
 constexpr double kConstraintPublishPeriodSec = 0.5;
 constexpr double kTopicMismatchCheckDelaySec = 3.0;
 

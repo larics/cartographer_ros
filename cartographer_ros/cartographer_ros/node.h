@@ -43,6 +43,7 @@
 #include "cartographer_ros_msgs/SubmapList.h"
 #include "cartographer_ros_msgs/SubmapQuery.h"
 #include "cartographer_ros_msgs/TrajectoryOptions.h"
+#include "cartographer_ros_msgs/WriteEcefTrajectory.h"
 #include "cartographer_ros_msgs/WriteState.h"
 #include "nav_msgs/Odometry.h"
 #include "cartographer_ros_msgs/SubmapCloudQuery.h"
@@ -144,6 +145,9 @@ class Node {
       cartographer_ros_msgs::FinishTrajectory::Response& response);
   bool HandleWriteState(cartographer_ros_msgs::WriteState::Request& request,
                         cartographer_ros_msgs::WriteState::Response& response);
+  bool HandleWriteEcefTrajectory(
+      cartographer_ros_msgs::WriteEcefTrajectory::Request& request,
+      cartographer_ros_msgs::WriteEcefTrajectory::Response& response);
   bool HandleGetTrajectoryStates(
       ::cartographer_ros_msgs::GetTrajectoryStates::Request& request,
       ::cartographer_ros_msgs::GetTrajectoryStates::Response& response);

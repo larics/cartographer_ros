@@ -100,6 +100,12 @@ class MapBuilderBridge {
 
   bool CreateLastSubmapPointCloud(sensor_msgs::PointCloud2& cloud);
 
+  cartographer::mapping::MapById<cartographer::mapping::NodeId,
+                                 cartographer::mapping::TrajectoryNode>
+  GetTrajectoryNodes() {
+    return map_builder_->pose_graph()->GetTrajectoryNodes();
+  }
+
   cartographer_ros_msgs::SubmapList GetSubmapList();
   std::unordered_map<int, LocalTrajectoryData> GetLocalTrajectoryData()
       LOCKS_EXCLUDED(mutex_);

@@ -76,6 +76,11 @@ class SensorBridge {
 
   const TfBridge& tf_bridge() const;
 
+  static absl::optional<::cartographer::transform::Rigid3d>&
+  ecef_to_local_frame() {
+    return ecef_to_local_frame_;
+  }
+
  private:
   void HandleLaserScan(
       const std::string& sensor_id, ::cartographer::common::Time start_time,
@@ -93,7 +98,8 @@ class SensorBridge {
   ::cartographer::mapping::TrajectoryBuilderInterface* const
       trajectory_builder_;
 
-  absl::optional<::cartographer::transform::Rigid3d> ecef_to_local_frame_;
+  static absl::optional<::cartographer::transform::Rigid3d>
+      ecef_to_local_frame_;
   const double nav_sat_translation_weight_;
   // nullptr: use first NavSatFix to place ENU frame
   const sensor_msgs::NavSatFix::ConstPtr predefined_enu_frame_position_;

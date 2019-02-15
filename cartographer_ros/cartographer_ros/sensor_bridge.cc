@@ -39,6 +39,9 @@ const std::string& CheckNoLeadingSlash(const std::string& frame_id) {
 
 }  // namespace
 
+absl::optional<::cartographer::transform::Rigid3d>
+    SensorBridge::ecef_to_local_frame_;
+
 SensorBridge::SensorBridge(
     const int num_subdivisions_per_laser_scan,
     const std::string& tracking_frame,
