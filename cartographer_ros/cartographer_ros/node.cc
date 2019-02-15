@@ -409,7 +409,7 @@ bool Node::HandleWriteEcefTrajectory(
   output.precision(20);
   for (const auto& trajectory_node : trajectory_nodes) {
     const auto node_in_ecef =
-        ecef_to_local_frame.value() * trajectory_node.data.global_pose;
+        ecef_to_local_frame.value().inverse() * trajectory_node.data.global_pose;
     output << node_in_ecef.translation().x() << " "
            << node_in_ecef.translation().y() << " "
            << node_in_ecef.translation().z() << std::endl;
