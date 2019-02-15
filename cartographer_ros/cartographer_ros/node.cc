@@ -41,8 +41,8 @@
 #include "cartographer_ros_msgs/StatusCode.h"
 #include "cartographer_ros_msgs/StatusResponse.h"
 #include "glog/logging.h"
-#include "nav_msgs/Path.h"
 #include "nav_msgs/Odometry.h"
+#include "nav_msgs/Path.h"
 #include "ros/serialization.h"
 #include "sensor_msgs/PointCloud2.h"
 #include "tf2_eigen/tf2_eigen.h"
@@ -52,7 +52,7 @@ namespace cartographer {
 namespace mapping {
 extern std::atomic<int> number_of_pose_graph_optimizations;
 }
-}
+}  // namespace cartographer
 
 namespace cartographer_ros {
 
@@ -120,8 +120,7 @@ Node::Node(
       node_handle_.advertise<::visualization_msgs::MarkerArray>(
           kConstraintListTopic, kLatestOnlyPublisherQueueSize);
   submap_cloud_publisher_ =
-      node_handle_.advertise<::sensor_msgs::PointCloud2>(
-          "submap_cloud", 1000);
+      node_handle_.advertise<::sensor_msgs::PointCloud2>("submap_cloud", 1000);
 
   service_servers_.push_back(node_handle_.advertiseService(
       kSubmapQueryServiceName, &Node::HandleSubmapQuery, this));
@@ -187,14 +186,15 @@ bool Node::HandleSubmapCloudQuery(
   return map_builder_bridge_.HandleSubmapCloudQuery(request, response);
 }
 
-void Node::PublishSubmapPointCloud(const ::ros::WallTimerEvent& unused_timer_event){
-    absl::MutexLock lock(&mutex_);
-    if (submap_cloud_publisher_.getNumSubscribers() > 0) {
-      sensor_msgs::PointCloud2 cloud;
-      if (map_builder_bridge_.CreateLastSubmapPointCloud(cloud)) {
-        submap_cloud_publisher_.publish(cloud);
-      }
+void Node::PublishSubmapPointCloud(
+    const ::ros::WallTimerEvent& unused_timer_event) {
+  absl::MutexLock lock(&mutex_);
+  if (submap_cloud_publisher_.getNumSubscribers() > 0) {
+    sensor_msgs::PointCloud2 cloud;
+    if (map_builder_bridge_.CreateLastSubmapPointCloud(cloud)) {
+      submap_cloud_publisher_.publish(cloud);
     }
+  }
 }
 
 void Node::PublishSubmapList(const ::ros::WallTimerEvent& unused_timer_event) {
@@ -240,7 +240,8 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
     static Rigid3d previous_pose = Rigid3d::Identity();
     static bool interpolation_active = false;
     static ros::Time interpolation_start_time;
-    const int current_pgo_id = cartographer::mapping::number_of_pose_graph_optimizations;
+    const int current_pgo_id =
+        cartographer::mapping::number_of_pose_graph_optimizations;
     if (previous_pgo_id != current_pgo_id) {
       interpolation_active = true;
       interpolation_start_time = ros::Time::now();
@@ -249,15 +250,18 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
     }
     Rigid3d interpolated_local_to_map;
     if (interpolation_active) {
-      const double time_delta = (ros::Time::now() - interpolation_start_time).toSec();
-      const double interpolation_factor = 1./(1.+exp(-(time_delta-3.)*1.5));
+      const double time_delta =
+          (ros::Time::now() - interpolation_start_time).toSec();
+      const double interpolation_factor =
+          1. / (1. + exp(-(time_delta - 3.) * 1.5));
       if (time_delta < 7.0) {
         interpolated_local_to_map = {
-            interpolation_start_pose.translation() * (1. - interpolation_factor)
-            + interpolation_factor * trajectory_data.local_to_map.translation(),
+            interpolation_start_pose.translation() *
+                    (1. - interpolation_factor) +
+                interpolation_factor *
+                    trajectory_data.local_to_map.translation(),
             interpolation_start_pose.rotation().slerp(
-                interpolation_factor, trajectory_data.local_to_map.rotation())
-        };
+                interpolation_factor, trajectory_data.local_to_map.rotation())};
       } else {
         interpolation_active = false;
         // std::cout << "!!!!!!!! Interpolation FINISHED" << std::endl;
@@ -269,9 +273,9 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
     previous_pose = interpolated_local_to_map;
     previous_pgo_id = current_pgo_id;
 
-    //std::cout << "PGOs: " <<
-    //          <<" local_to_map: " << trajectory_data.local_to_map << std::endl;
-
+    // std::cout << "PGOs: " <<
+    //          <<" local_to_map: " << trajectory_data.local_to_map <<
+    //          std::endl;
 
     auto& extrapolator = extrapolators_.at(entry.first);
     // We only publish a point cloud if it has changed. It is not needed at high
@@ -358,8 +362,6 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
 }
 
 ros::Publisher* pathpub = nullptr;
-
-
 
 void Node::PublishTrajectoryNodeList(
     const ::ros::WallTimerEvent& unused_timer_event) {

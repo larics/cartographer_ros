@@ -31,11 +31,11 @@
 #include "cartographer_ros/sensor_bridge.h"
 #include "cartographer_ros/tf_bridge.h"
 #include "cartographer_ros/trajectory_options.h"
+#include "cartographer_ros_msgs/SubmapCloud.h"
+#include "cartographer_ros_msgs/SubmapCloudQuery.h"
 #include "cartographer_ros_msgs/SubmapEntry.h"
 #include "cartographer_ros_msgs/SubmapList.h"
 #include "cartographer_ros_msgs/SubmapQuery.h"
-#include "cartographer_ros_msgs/SubmapCloudQuery.h"
-#include "cartographer_ros_msgs/SubmapCloud.h"
 #include "nav_msgs/OccupancyGrid.h"
 
 // Abseil unfortunately pulls in winnt.h, which #defines DELETE.
@@ -45,9 +45,9 @@
 #endif
 #include "visualization_msgs/MarkerArray.h"
 
-#include "sensor_msgs/PointCloud2.h"
-#include "pcl_ros/point_cloud.h"
 #include "pcl/point_types.h"
+#include "pcl_ros/point_cloud.h"
+#include "sensor_msgs/PointCloud2.h"
 namespace cartographer_ros {
 
 class MapBuilderBridge {

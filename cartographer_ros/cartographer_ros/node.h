@@ -39,6 +39,8 @@
 #include "cartographer_ros_msgs/SensorTopics.h"
 #include "cartographer_ros_msgs/StartTrajectory.h"
 #include "cartographer_ros_msgs/StatusResponse.h"
+#include "cartographer_ros_msgs/SubmapCloud.h"
+#include "cartographer_ros_msgs/SubmapCloudQuery.h"
 #include "cartographer_ros_msgs/SubmapEntry.h"
 #include "cartographer_ros_msgs/SubmapList.h"
 #include "cartographer_ros_msgs/SubmapQuery.h"
@@ -46,8 +48,6 @@
 #include "cartographer_ros_msgs/WriteEcefTrajectory.h"
 #include "cartographer_ros_msgs/WriteState.h"
 #include "nav_msgs/Odometry.h"
-#include "cartographer_ros_msgs/SubmapCloudQuery.h"
-#include "cartographer_ros_msgs/SubmapCloud.h"
 #include "ros/ros.h"
 #include "sensor_msgs/Imu.h"
 #include "sensor_msgs/LaserScan.h"
@@ -161,8 +161,9 @@ class Node {
   ComputeExpectedSensorIds(
       const TrajectoryOptions& options,
       const cartographer_ros_msgs::SensorTopics& topics) const;
-  bool HandleSubmapCloudQuery(cartographer_ros_msgs::SubmapCloudQuery::Request& request,
-                        cartographer_ros_msgs::SubmapCloudQuery::Response& response);
+  bool HandleSubmapCloudQuery(
+      cartographer_ros_msgs::SubmapCloudQuery::Request& request,
+      cartographer_ros_msgs::SubmapCloudQuery::Response& response);
 
   void PublishSubmapPointCloud(const ::ros::WallTimerEvent& timer_event);
   int AddTrajectory(const TrajectoryOptions& options,

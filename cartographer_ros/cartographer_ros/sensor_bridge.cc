@@ -91,47 +91,46 @@ void SensorBridge::HandleNavSatFixMessage(
 
   if (ecef_to_local_pub == nullptr) {
     ecef_to_local_pub = new ros::Publisher();
-    *ecef_to_local_pub =
-        ros::NodeHandle().advertise<geometry_msgs::Transform>("ecef_to_local", 1, true);
+    *ecef_to_local_pub = ros::NodeHandle().advertise<geometry_msgs::Transform>(
+        "ecef_to_local", 1, true);
   }
   if (ecef_to_local_fix_pub == nullptr) {
     ecef_to_local_fix_pub = new ros::Publisher();
     *ecef_to_local_fix_pub =
-      ros::NodeHandle().advertise<sensor_msgs::NavSatFix>("ecef_to_local_navsat_fix", 1, true);
+        ros::NodeHandle().advertise<sensor_msgs::NavSatFix>(
+            "ecef_to_local_navsat_fix", 1, true);
   }
 
   if (!ecef_to_local_frame_.has_value()) {
     if (predefined_enu_frame_position_) {
-      ecef_to_local_frame_ =
-        ComputeLocalFrameFromLatLong(
-            predefined_enu_frame_position_->latitude,
-            predefined_enu_frame_position_->longitude,
-            predefined_enu_frame_position_->altitude);
+      ecef_to_local_frame_ = ComputeLocalFrameFromLatLong(
+          predefined_enu_frame_position_->latitude,
+          predefined_enu_frame_position_->longitude,
+          predefined_enu_frame_position_->altitude);
     } else {
-      ecef_to_local_frame_ =
-        ComputeLocalFrameFromLatLong(msg->latitude, msg->longitude,
-            msg->altitude);
+      ecef_to_local_frame_ = ComputeLocalFrameFromLatLong(
+          msg->latitude, msg->longitude, msg->altitude);
     }
     LOG(INFO) << "Using NavSatFix. Setting ecef_to_local_frame with lat = "
               << msg->latitude << ", long = " << msg->longitude
               << ", alt = " << msg->altitude;
-    ecef_to_local_pub->publish(ToGeometryMsgTransform(ecef_to_local_frame_.value()));
+    ecef_to_local_pub->publish(
+        ToGeometryMsgTransform(ecef_to_local_frame_.value()));
     ecef_to_local_fix_pub->publish(msg);
   }
 
   trajectory_builder_->AddSensorData(
-      sensor_id, carto::sensor::LandmarkData{
+      sensor_id,
+      carto::sensor::LandmarkData{
           cartographer_ros::FromRos(msg->header.stamp),
-          std::vector<
-              carto::sensor::
-              LandmarkObservation>{carto::sensor::LandmarkObservation{
+          std::vector<carto::sensor::LandmarkObservation>{
+              carto::sensor::LandmarkObservation{
                   "fixed",
-                  Rigid3d::Translation(
-                      ecef_to_local_frame_.value() *
-                      LatLongAltToEcef(msg->latitude, msg->longitude,
-                                       msg->altitude)),
-                  nav_sat_translation_weight_,
-                  0. /* rotation_weight */,
+                  Rigid3d::Translation(ecef_to_local_frame_.value() *
+                                       LatLongAltToEcef(msg->latitude,
+                                                        msg->longitude,
+                                                        msg->altitude)),
+                  nav_sat_translation_weight_, 0. /* rotation_weight */,
                   false /* observed_from_tracking */}}});
 }
 
