@@ -24,7 +24,6 @@
 
 #include "absl/synchronization/mutex.h"
 #include "cartographer/common/port.h"
-#include "cartographer_ros/frontier_detection.h"
 #include "cartographer_ros_msgs/SubmapList.h"
 #include "cartographer_rviz/drawable_submap.h"
 #include "rviz/message_filter_display.h"
@@ -42,13 +41,16 @@ struct Trajectory : public QObject {
   Q_OBJECT
 
  public:
-  Trajectory(std::unique_ptr<::rviz::BoolProperty> property);
+  Trajectory(std::unique_ptr<::rviz::BoolProperty> property,
+             bool pose_markers_enabled);
 
   std::unique_ptr<::rviz::BoolProperty> visibility;
+  std::unique_ptr<::rviz::BoolProperty> pose_markers_visibility;
   std::map<int, std::unique_ptr<DrawableSubmap>> submaps;
 
  private Q_SLOTS:
   void AllEnabledToggled();
+  void PoseMarkersEnabledToggled();
 };
 
 // RViz plugin used for displaying maps which are represented by a collection of
@@ -71,6 +73,7 @@ class SubmapsDisplay
  private Q_SLOTS:
   void Reset();
   void AllEnabledToggled();
+  void PoseMarkersEnabledToggled();
   void ResolutionToggled();
 
  private:
@@ -90,16 +93,14 @@ class SubmapsDisplay
   std::unique_ptr<std::string> map_frame_;
   ::rviz::StringProperty* tracking_frame_property_;
   Ogre::SceneNode* map_node_ = nullptr;  // Represents the map frame.
-  std::vector<std::unique_ptr<Trajectory>> trajectories_ GUARDED_BY(mutex_);
+  std::map<int, std::unique_ptr<Trajectory>> trajectories_ GUARDED_BY(mutex_);
   absl::Mutex mutex_;
   ::rviz::BoolProperty* slice_high_resolution_enabled_;
   ::rviz::BoolProperty* slice_low_resolution_enabled_;
-  ::rviz::BoolProperty* slice_frontier_enabled_;
   ::rviz::Property* trajectories_category_;
   ::rviz::BoolProperty* visibility_all_enabled_;
+  ::rviz::BoolProperty* pose_markers_all_enabled_;
   ::rviz::FloatProperty* fade_out_start_distance_in_meters_;
-
-  frontier::Detector frontier_detector_;
 };
 
 }  // namespace cartographer_rviz

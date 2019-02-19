@@ -27,7 +27,6 @@
 #include "cartographer/io/submap_painter.h"
 #include "cartographer/mapping/id.h"
 #include "cartographer/transform/rigid_transform.h"
-#include "cartographer_ros/frontier_detection.h"
 #include "cartographer_ros/msg_conversion.h"
 #include "cartographer_ros/node_constants.h"
 #include "cartographer_ros/ros_log_sink.h"
@@ -66,9 +65,6 @@ class Node {
  private:
   void HandleSubmapList(const cartographer_ros_msgs::SubmapList::ConstPtr& msg);
   void DrawAndPublish(const ::ros::WallTimerEvent& timer_event);
-  void PublishOccupancyGrid(const std::string& frame_id, const ros::Time& time,
-                            const Eigen::Array2f& origin,
-                            cairo_surface_t* surface);
 
   ::ros::NodeHandle node_handle_;
   const double resolution_;
@@ -81,7 +77,6 @@ class Node {
   ::ros::WallTimer occupancy_grid_publisher_timer_;
   std::string last_frame_id_;
   ros::Time last_timestamp_;
-  frontier::Detector frontier_detector_;
 };
 
 Node::Node(const double resolution, const double publish_period_sec)
@@ -105,8 +100,12 @@ Node::Node(const double resolution, const double publish_period_sec)
 
 void Node::HandleSubmapList(
     const cartographer_ros_msgs::SubmapList::ConstPtr& msg) {
-  frontier_detector_.handleNewSubmapList(*msg);
   absl::MutexLock locker(&mutex_);
+
+  // We do not do any work if nobody listens.
+  if (occupancy_grid_publisher_.getNumSubscribers() == 0) {
+    return;
+  }
 
   // Keep track of submap IDs that don't appear in the message anymore.
   std::set<SubmapId> submap_ids_to_delete;
@@ -134,24 +133,21 @@ void Node::HandleSubmapList(
     if (fetched_textures == nullptr) {
       continue;
     }
-    if (fetched_textures->textures.size() == 1) {
-      frontier_detector_.handleNewSubmapTexture(id, fetched_textures);
-    }
     CHECK(!fetched_textures->textures.empty());
     submap_slice.version = fetched_textures->version;
 
     // We use the first texture only. By convention this is the highest
     // resolution texture and that is the one we want to use to construct the
     // map for ROS.
-    const auto& fetched_texture = fetched_textures->textures.front();
-    submap_slice.width = fetched_texture.width;
-    submap_slice.height = fetched_texture.height;
-    submap_slice.slice_pose = fetched_texture.slice_pose;
-    submap_slice.resolution = fetched_texture.resolution;
+    const auto fetched_texture = fetched_textures->textures.begin();
+    submap_slice.width = fetched_texture->width;
+    submap_slice.height = fetched_texture->height;
+    submap_slice.slice_pose = fetched_texture->slice_pose;
+    submap_slice.resolution = fetched_texture->resolution;
     submap_slice.cairo_data.clear();
     submap_slice.surface = ::cartographer::io::DrawTexture(
-        fetched_texture.pixels.intensity, fetched_texture.pixels.alpha,
-        fetched_texture.width, fetched_texture.height,
+        fetched_texture->pixels.intensity, fetched_texture->pixels.alpha,
+        fetched_texture->width, fetched_texture->height,
         &submap_slice.cairo_data);
   }
 
@@ -165,12 +161,10 @@ void Node::HandleSubmapList(
 }
 
 void Node::DrawAndPublish(const ::ros::WallTimerEvent& unused_timer_event) {
-  if (submap_slices_.empty() || last_frame_id_.empty() ||
-      occupancy_grid_publisher_.getNumSubscribers() == 0) {
+  absl::MutexLock locker(&mutex_);
+  if (submap_slices_.empty() || last_frame_id_.empty()) {
     return;
   }
-
-  absl::MutexLock locker(&mutex_);
   auto painted_slices = PaintSubmapSlices(submap_slices_, resolution_);
   std::unique_ptr<nav_msgs::OccupancyGrid> msg_ptr = CreateOccupancyGridMsg(
       painted_slices, resolution_, last_frame_id_, last_timestamp_);
