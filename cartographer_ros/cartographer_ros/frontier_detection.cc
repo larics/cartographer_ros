@@ -24,7 +24,6 @@ void Detector::InitPublisher() {
 
 void Detector::PublishAllSubmaps() {
   if (!publisher_initialized_) InitPublisher();
-  // LOG(ERROR) << "publishing all submaps";
   visualization_msgs::MarkerArray frontier_markers;
 
   std::unique_lock<std::mutex> lock(mutex_);
@@ -79,22 +78,6 @@ visualization_msgs::Marker& Detector::CreateMarkerForSubmap(
         updated_submap_ids,
     const bool check_against_active) {
   Submap& s_i(submaps_(id_i));
-
-  /*LOG(WARNING) << "Publishing submap " << id_i;
-  { std::ostringstream ss;
-    ss << "Active submaps: ";
-    for (const auto &active_submap : active_submaps_) {
-      ss << active_submap << " ";
-    }
-    LOG(WARNING) << ss.str();
-  }
-  { std::ostringstream ss;
-  ss << "Intersecting submaps: ";
-    for (const auto &intersecting_submap : intersecting_submaps) {
-      ss << intersecting_submap.second << " ";
-    }
-    LOG(WARNING) << ss.str();
-  }*/
 
   s_i.frontier_marker.points.clear();
 
