@@ -71,7 +71,7 @@ class Detector {
            std::pair<
                Eigen::Matrix3Xd,
                std::vector<cartographer::mapping::SubmapId> /* submap_hints */>>
-      submap_frontier_cells_;
+      submap_frontier_points_;
 
   struct BoundingBoxInfo {
     std::pair<Eigen::Vector3d, Eigen::Vector3d> local_box;
@@ -119,7 +119,7 @@ class Detector {
     const cartographer::transform::Rigid3d local_pose_inverse;
     const Eigen::Isometry2d to_global_position;
     const Eigen::Isometry2d to_local_submap_position;
-    Eigen::Matrix2Xd cached_frontier_marker_cells_global;
+    Eigen::Matrix2Xd cached_frontier_marker_points_global;
     visualization_msgs::Marker frontier_marker;
 
     const cartographer::mapping::Grid2D& grid() const { return *submap.grid(); }
