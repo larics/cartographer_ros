@@ -488,7 +488,7 @@ void Detector::RebuildTree() {
     const auto bounding_box_iter = bounding_boxes_.find(submap_data.id);
     if (bounding_box_iter == bounding_boxes_.end()) {
       LOG(ERROR) << "Bounding box missing, should not happen.";
-      continue;
+      return;
     }
     auto& bounding_box_info = bounding_box_iter->second;
     const Submap& s_i(submaps_(submap_data.id));
