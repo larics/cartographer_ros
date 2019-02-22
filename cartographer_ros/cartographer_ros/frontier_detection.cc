@@ -2,18 +2,90 @@
 #pragma GCC target ("arch=broadwell")
 // clang-format on
 
+//#pragma GCC push_options
+//#pragma GCC optimize ("O0")
+
 #include <absl/synchronization/mutex.h>
 #include <cartographer/mapping/2d/map_limits.h>
 #include <cartographer_ros/frontier_detection.h>
 #include <cartographer_ros/msg_conversion.h>
+#include <mutex>
+#include <condition_variable>
 
 namespace frontier {
 
+class LambdaWorker {
+ public:
+  LambdaWorker() : finished_(false) {}
+
+  ~LambdaWorker() {
+    finish();
+    thread_.join();
+  }
+
+  void finish() {
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      finished_ = true;
+    }
+    condition_.notify_one();
+  }
+
+  void PushIntoWorkQueue(std::function<void(void)> task) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    if (!finished_) {
+      work_queue_.push_back(std::move(task));
+      condition_.notify_one();
+    }
+  }
+
+  int TaskCount() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    return static_cast<int>(work_queue_.size());
+  }
+
+  void start() {
+    thread_ = std::thread([this]() {
+      while (true) {
+        int last_queue_size;
+        do {
+          std::function<void(void)> top_of_queue;
+          {
+            std::unique_lock<std::mutex> lock(mutex_);
+            if (finished_) return;
+            last_queue_size = work_queue_.size();
+            if (last_queue_size > 0) {
+              top_of_queue = std::move(work_queue_.front());
+              work_queue_.pop_front();
+            }
+          }
+          if (last_queue_size > 0) top_of_queue();
+        } while (last_queue_size > 1);
+        std::unique_lock<std::mutex> lock(mutex_);
+        if (work_queue_.size() == 0 && !finished_) {
+          condition_.wait(lock, []() { return true; });
+        }
+      }
+    });
+  }
+
+ private:
+  std::deque<std::function<void(void)>> work_queue_;
+  std::thread thread_;
+
+  std::condition_variable condition_;
+  std::mutex mutex_;
+  bool finished_;
+};
+
+LambdaWorker lambda_worker;
 Detector::Detector(cartographer::mapping::PoseGraph2D* const pose_graph)
     : publisher_initialized_(false),
       last_optimizations_performed_(-1),
       pose_graph_(pose_graph),
-      submaps_(pose_graph_) {}
+      submaps_(pose_graph_) {
+  lambda_worker.start();
+}
 
 void Detector::InitPublisher() {
   frontier_publisher_ =
@@ -187,17 +259,17 @@ visualization_msgs::Marker& Detector::CreateMarkerForSubmap(
     std::vector<Eigen::Array2Xi> indices_in_updated_submaps;
     indices_in_updated_submaps.reserve(updated_submap_ids->size());
 
-    std::vector<Submap> updated_submaps;
+    std::vector<Submap*> updated_submaps;
     updated_submaps.reserve(updated_submap_ids->size());
     for (int i = 0; i < static_cast<int>(updated_submap_ids->size()); i++) {
-      updated_submaps.push_back(submaps_((*updated_submap_ids)[i]));
+      updated_submaps.push_back(&submaps_((*updated_submap_ids)[i]));
       indices_in_updated_submaps.push_back(
-          (((updated_submaps[i].to_local_submap_position *
+          (((updated_submaps[i]->to_local_submap_position *
              s_i.cached_frontier_marker_points_global)
                 .array()
                 .colwise() -
-            updated_submaps[i].limits().max().array()) /
-               (-updated_submaps[i].limits().resolution()) -
+            updated_submaps[i]->limits().max().array()) /
+               (-updated_submaps[i]->limits().resolution()) -
            0.5)
               .round()
               .cast<int>());
@@ -210,7 +282,7 @@ visualization_msgs::Marker& Detector::CreateMarkerForSubmap(
       bool ok = true;
 
       for (int i = 0; i < static_cast<int>(updated_submap_ids->size()); i++) {
-        ok &= updated_submaps[i].is_unknown(
+        ok &= updated_submaps[i]->is_unknown(
             {indices_in_updated_submaps[i](1, j),
              indices_in_updated_submaps[i](0, j)});
       }
@@ -251,233 +323,286 @@ Detector::GetIntersectingFinishedSubmaps(
 
 void Detector::HandleSubmapUpdates(
     const std::vector<cartographer::mapping::SubmapId>& submap_ids) {
-  std::vector<cartographer::mapping::SubmapId> additional_submaps_to_publish;
+  bool do_not_skip = false;
+  std::vector<cartographer::mapping::PoseGraphInterface::SubmapData>
+      submap_data(submap_ids.size());
+  for (int i = 0; i < static_cast<int>(submap_ids.size()); i++) {
+    const auto& id_i = submap_ids[i];
+    submap_data[i] = pose_graph_->GetSubmapData(id_i);
+    if (submap_data[i].submap->insertion_finished() ||
+        submap_data[i].submap->num_range_data() == 1) {
+      do_not_skip = true;
+    }
+  }
 
-  for (const auto& id_i : submap_ids) {
-    const Submap& s_i(submaps_(id_i));
-    auto& submap_frontier_cells = submap_frontier_points_[id_i];
+  if (!do_not_skip && lambda_worker.TaskCount() > 10) return;
 
-    int previous_frontier_size =
-        static_cast<int>(submap_frontier_cells.second.size());
-    submap_frontier_cells.second.clear();
+  auto* submap_copies_ptr = new std::vector<
+      std::pair<cartographer::mapping::PoseGraphInterface::SubmapData,
+                std::unique_ptr<cartographer::mapping::ProbabilityGrid>>>(
+      submap_ids.size());
+  for (int i = 0; i < static_cast<int>(submap_ids.size()); i++) {
+    (*submap_copies_ptr)[i] = std::make_pair(
+        submap_data[i],
+        absl::make_unique<cartographer::mapping::ProbabilityGrid>(
+            *static_cast<const cartographer::mapping::ProbabilityGrid*>(
+                static_cast<const cartographer::mapping::Submap2D*>(
+                    submap_data[i].submap.get())
+                    ->grid())));
+  }
 
-    Eigen::Array2i offset;
-    cartographer::mapping::CellLimits cell_limits;
-    s_i.grid().ComputeCroppedLimits(&offset, &cell_limits);
+  lambda_worker.PushIntoWorkQueue([this, submap_copies_ptr, submap_ids]() {
+    std::unique_ptr<std::vector<
+        std::pair<cartographer::mapping::PoseGraphInterface::SubmapData,
+                  std::unique_ptr<cartographer::mapping::ProbabilityGrid>>>>
+        submap_copies(submap_copies_ptr);
 
-    const int full_x_dim = s_i.limits().cell_limits().num_x_cells;
-    const int full_y_dim = s_i.limits().cell_limits().num_y_cells;
+    std::vector<cartographer::mapping::SubmapId> additional_submaps_to_publish;
 
-    using DynamicArray = Eigen::Array<uint16_t, Eigen::Dynamic, Eigen::Dynamic>;
-    Eigen::Map<const DynamicArray> full_correspondence_costs(
-        s_i.grid().correspondence_cost_cells().data(), full_x_dim, full_y_dim);
-
-    const int x_dim = cell_limits.num_x_cells;
-    const int y_dim = cell_limits.num_y_cells;
-
-    DynamicArray correspondence_costs(x_dim + 2, y_dim + 2);
-    correspondence_costs.row(0) = 0;
-    correspondence_costs.row(x_dim + 1) = 0;
-    correspondence_costs.col(0) = 0;
-    correspondence_costs.col(y_dim + 1) = 0;
-
-    correspondence_costs.block(1, 1, x_dim, y_dim) =
-        full_correspondence_costs.block(offset.x(), offset.y(), x_dim, y_dim);
-
-    DynamicArray free_cells(
-        (correspondence_costs >= kFreeProbabilityValue).cast<uint16_t>());
-    DynamicArray unknown_cells(
-        ((correspondence_costs == 0) +
-         (correspondence_costs > kOccupiedProbabilityValue) *
-             (correspondence_costs < kFreeProbabilityValue))
-            .cast<uint16_t>());
-
-    DynamicArray free_neighbours = free_cells.block(0, 0, x_dim, y_dim) +
-                                   free_cells.block(0, 1, x_dim, y_dim) +
-                                   free_cells.block(0, 2, x_dim, y_dim) +
-                                   free_cells.block(1, 2, x_dim, y_dim) +
-                                   free_cells.block(2, 2, x_dim, y_dim) +
-                                   free_cells.block(2, 1, x_dim, y_dim) +
-                                   free_cells.block(2, 0, x_dim, y_dim) +
-                                   free_cells.block(1, 0, x_dim, y_dim);
-
-    DynamicArray unknown_neighbours = unknown_cells.block(0, 0, x_dim, y_dim) +
-                                      unknown_cells.block(0, 1, x_dim, y_dim) +
-                                      unknown_cells.block(0, 2, x_dim, y_dim) +
-                                      unknown_cells.block(1, 2, x_dim, y_dim) +
-                                      unknown_cells.block(2, 2, x_dim, y_dim) +
-                                      unknown_cells.block(2, 1, x_dim, y_dim) +
-                                      unknown_cells.block(2, 0, x_dim, y_dim) +
-                                      unknown_cells.block(1, 0, x_dim, y_dim);
-
-    DynamicArray frontier(unknown_cells.block(1, 1, x_dim, y_dim) *
-                          (unknown_neighbours >= 3u).cast<uint16_t>() *
-                          (free_neighbours >= 3u).cast<uint16_t>());
-
-    std::vector<Submap*> previous_submaps_to_cleanup;
-    for (int i = 1; i <= 2; i++) {
-      const cartographer::mapping::SubmapId id_prev(
-          {id_i.trajectory_id, id_i.submap_index - i});
-      auto* submap_prev = submaps_.IfExists(id_prev);
-      if (submap_prev != nullptr) {
-        previous_submaps_to_cleanup.push_back(submap_prev);
-      }
+    for (int i = 0; i < static_cast<int>(submap_ids.size()); i++) {
+      submaps_.UpdateCacheWithCopy(submap_ids[i],
+                                   std::move((*submap_copies)[i].first),
+                                   std::move((*submap_copies)[i].second));
     }
 
-    std::vector<int> frontier_cell_indexes_vec;
-    frontier_cell_indexes_vec.reserve(
-        static_cast<size_t>(previous_frontier_size) * 2);
-    for (int y = 0; y < y_dim; y++)
-      for (int x = 0; x < x_dim; x++)
-        if (frontier(x, y))
-          frontier_cell_indexes_vec.insert(frontier_cell_indexes_vec.end(),
-                                           {y, x});
+    for (const auto& id_i : submap_ids) {
+      const Submap& s_i(submaps_(id_i));
+      CHECK(s_i.is_copy);
 
-    const int num_frontier_candidates =
-        static_cast<int>(frontier_cell_indexes_vec.size()) / 2;
-
-    Eigen::Array2Xi frontier_cell_indexes = Eigen::Map<Eigen::Matrix2Xi>(
-        frontier_cell_indexes_vec.data(), 2, num_frontier_candidates);
-
-    frontier_cell_indexes.colwise() += Eigen::Array2i{offset.y(), offset.x()};
-
-    Eigen::Array2Xd frontier_points(2, num_frontier_candidates);
-    frontier_points.colwise() =
-        Eigen::Array2d(s_i.limits().max().x(), s_i.limits().max().y());
-    frontier_points -= (s_i.limits().resolution()) *
-                       (frontier_cell_indexes.cast<double>() + 0.5);
-
-    std::vector<bool> ok(static_cast<size_t>(num_frontier_candidates), true);
-    // Perform stabbing query tests of current submap's s_i frontier
-    // cells against temporally previous submaps
-    int final_num_frontier_cells = num_frontier_candidates;
-    for (const auto& previous_submap : previous_submaps_to_cleanup) {
-      Eigen::Array2Xi frontier_cell_2_indexes =
-          ((frontier_points.colwise() -
-            previous_submap->limits().max().array()) /
-               (-previous_submap->limits().resolution()) -
-           0.5)
-              .round()
-              .cast<int>();
-
-      for (int i = 0; i < num_frontier_candidates; i++) {
-        Eigen::Array2i xy_index{frontier_cell_2_indexes(1, i),
-                                frontier_cell_2_indexes(0, i)};
-        const bool is_unknown = previous_submap->is_unknown(xy_index);
-        if (ok[i] && !is_unknown) final_num_frontier_cells--;
-        ok[i] = ok[i] && is_unknown;
+      int sum = 0;
+      for (auto& cost : s_i.grid().correspondence_cost_cells()) {
+        if (cost != 0) sum++;
       }
-    }
 
-    std::vector<double> final_frontier_points_vec;
-    final_frontier_points_vec.reserve(
-        static_cast<size_t>(final_num_frontier_cells) * 3);
-    for (int i = 0; i < num_frontier_candidates; i++) {
-      if (ok[i]) {
-        final_frontier_points_vec.insert(
-            final_frontier_points_vec.end(),
-            {frontier_points(0, i), frontier_points(1, i), 1.});
-      }
-    }
+      auto& submap_frontier_cells = submap_frontier_points_[id_i];
 
-    submap_frontier_cells.first = Eigen::Map<Eigen::Matrix3Xd>(
-        final_frontier_points_vec.data(), 3, final_num_frontier_cells);
-    submap_frontier_cells.second = {
-        static_cast<size_t>(final_num_frontier_cells),
-        cartographer::mapping::SubmapId{-1, -1}};
+      int previous_frontier_size =
+          static_cast<int>(submap_frontier_cells.second.size());
+      submap_frontier_cells.second.clear();
 
-    const double max_x =
-        s_i.limits().max().x() - s_i.limits().resolution() * offset.y();
-    const double max_y =
-        s_i.limits().max().y() - s_i.limits().resolution() * offset.x();
-    const double min_x =
-        s_i.limits().max().x() -
-        s_i.limits().resolution() * (offset.y() + cell_limits.num_y_cells);
-    const double min_y =
-        s_i.limits().max().y() -
-        s_i.limits().resolution() * (offset.x() + cell_limits.num_x_cells);
+      Eigen::Array2i offset;
+      cartographer::mapping::CellLimits cell_limits;
+      s_i.grid().ComputeCroppedLimits(&offset, &cell_limits);
 
-    const Eigen::Vector3d p1 =
-        s_i.local_pose_inverse * Eigen::Vector3d{max_x, max_y, 0.};
-    const Eigen::Vector3d p2 =
-        s_i.local_pose_inverse * Eigen::Vector3d{min_x, min_y, 0.};
-    auto& bounding_box_info = bounding_boxes_[s_i.id];
-    bounding_box_info.local_box = std::make_pair(p1, p2);
-    bounding_box_info.last_global_box = CalculateBoundingBox(s_i);
+      const int full_x_dim = s_i.limits().cell_limits().num_x_cells;
+      const int full_y_dim = s_i.limits().cell_limits().num_y_cells;
 
-    for (const auto& previous_submap : previous_submaps_to_cleanup) {
-      // Perform testing of intersecting submaps' frontier points against
-      // the active submap
-      auto& previous_submap_frontier_points =
-          submap_frontier_points_.at(previous_submap->id);
-      const auto submap_frontier_points_to_cleanup =
-          std::move(previous_submap_frontier_points);
-      int num_frontier_cells_to_clean =
-          static_cast<int>(submap_frontier_points_to_cleanup.second.size());
+      using DynamicArray =
+          Eigen::Array<uint16_t, Eigen::Dynamic, Eigen::Dynamic>;
+      Eigen::Map<const DynamicArray> full_correspondence_costs(
+          s_i.grid().correspondence_cost_cells().data(), full_x_dim,
+          full_y_dim);
 
-      Eigen::Array2Xi frontier_cell_2_indexes =
-          ((submap_frontier_points_to_cleanup.first.array()
-                .topRows(2)
-                .colwise() -
-            s_i.limits().max().array()) /
-               (-s_i.limits().resolution()) -
-           0.5)
-              .round()
-              .cast<int>();
+      const int x_dim = cell_limits.num_x_cells;
+      const int y_dim = cell_limits.num_y_cells;
 
-      std::vector<double> final_cleaned_frontier_points_vec;
-      final_cleaned_frontier_points_vec.reserve(
-          static_cast<size_t>(num_frontier_cells_to_clean) * 3);
-      for (int i = 0; i < num_frontier_cells_to_clean; i++) {
-        Eigen::Array2i xy_index{frontier_cell_2_indexes(1, i),
-                                frontier_cell_2_indexes(0, i)};
-        if (s_i.is_unknown(xy_index)) {
-          final_cleaned_frontier_points_vec.insert(
-              final_cleaned_frontier_points_vec.end(),
-              {submap_frontier_points_to_cleanup.first(0, i),
-               submap_frontier_points_to_cleanup.first(1, i), 1.});
-          previous_submap_frontier_points.second.push_back(
-              submap_frontier_points_to_cleanup.second[i]);
+      DynamicArray correspondence_costs(x_dim + 2, y_dim + 2);
+      correspondence_costs.row(0) = 0;
+      correspondence_costs.row(x_dim + 1) = 0;
+      correspondence_costs.col(0) = 0;
+      correspondence_costs.col(y_dim + 1) = 0;
+
+      correspondence_costs.block(1, 1, x_dim, y_dim) =
+          full_correspondence_costs.block(offset.x(), offset.y(), x_dim, y_dim);
+
+      DynamicArray free_cells(
+          (correspondence_costs >= kFreeProbabilityValue).cast<uint16_t>());
+      DynamicArray unknown_cells(
+          ((correspondence_costs == 0) +
+           (correspondence_costs > kOccupiedProbabilityValue) *
+               (correspondence_costs < kFreeProbabilityValue))
+              .cast<uint16_t>());
+
+      DynamicArray free_neighbours = free_cells.block(0, 0, x_dim, y_dim) +
+                                     free_cells.block(0, 1, x_dim, y_dim) +
+                                     free_cells.block(0, 2, x_dim, y_dim) +
+                                     free_cells.block(1, 2, x_dim, y_dim) +
+                                     free_cells.block(2, 2, x_dim, y_dim) +
+                                     free_cells.block(2, 1, x_dim, y_dim) +
+                                     free_cells.block(2, 0, x_dim, y_dim) +
+                                     free_cells.block(1, 0, x_dim, y_dim);
+
+      DynamicArray unknown_neighbours =
+          unknown_cells.block(0, 0, x_dim, y_dim) +
+          unknown_cells.block(0, 1, x_dim, y_dim) +
+          unknown_cells.block(0, 2, x_dim, y_dim) +
+          unknown_cells.block(1, 2, x_dim, y_dim) +
+          unknown_cells.block(2, 2, x_dim, y_dim) +
+          unknown_cells.block(2, 1, x_dim, y_dim) +
+          unknown_cells.block(2, 0, x_dim, y_dim) +
+          unknown_cells.block(1, 0, x_dim, y_dim);
+
+      DynamicArray frontier(unknown_cells.block(1, 1, x_dim, y_dim) *
+                            (unknown_neighbours >= 3u).cast<uint16_t>() *
+                            (free_neighbours >= 3u).cast<uint16_t>());
+
+      std::vector<Submap*> previous_submaps_to_cleanup;
+      for (int i = 1; i <= 2; i++) {
+        const cartographer::mapping::SubmapId id_prev(
+            {id_i.trajectory_id, id_i.submap_index - i});
+        auto* submap_prev = submaps_.IfExists(id_prev);
+        if (submap_prev != nullptr) {
+          previous_submaps_to_cleanup.push_back(submap_prev);
         }
       }
 
-      previous_submap_frontier_points.first = Eigen::Map<Eigen::Matrix3Xd>(
-          final_cleaned_frontier_points_vec.data(), 3,
-          previous_submap_frontier_points.second.size());
+      std::vector<int> frontier_cell_indexes_vec;
+      frontier_cell_indexes_vec.reserve(
+          static_cast<size_t>(previous_frontier_size) * 2);
+      for (int y = 0; y < y_dim; y++)
+        for (int x = 0; x < x_dim; x++)
+          if (frontier(x, y))
+            frontier_cell_indexes_vec.insert(frontier_cell_indexes_vec.end(),
+                                             {y, x});
 
-      if (std::find(additional_submaps_to_publish.begin(),
-                    additional_submaps_to_publish.end(),
-                    previous_submap->id) == additional_submaps_to_publish.end())
-        additional_submaps_to_publish.push_back(previous_submap->id);
-    }
+      const int num_frontier_candidates =
+          static_cast<int>(frontier_cell_indexes_vec.size()) / 2;
 
-    // Keep only finished submaps in the tree in order to avoid lots of
-    // insertions and removals while the submaps are being built due to the
-    // bounding box being expanded.
-    const auto iter =
-        std::find(active_submaps_.begin(), active_submaps_.end(), s_i.id);
-    if (s_i.submap.insertion_finished()) {
-      // LOG(WARNING) << "Removing from active submaps: " << s_i.id;
-      if (iter != active_submaps_.end()) active_submaps_.erase(iter);
-      rt_.insert(std::make_pair(bounding_box_info.last_global_box, s_i.id));
-    } else {
-      if (iter == active_submaps_.end()) {
-        active_submaps_.push_back(s_i.id);
+      Eigen::Array2Xi frontier_cell_indexes = Eigen::Map<Eigen::Matrix2Xi>(
+          frontier_cell_indexes_vec.data(), 2, num_frontier_candidates);
+
+      frontier_cell_indexes.colwise() += Eigen::Array2i{offset.y(), offset.x()};
+
+      Eigen::Array2Xd frontier_points(2, num_frontier_candidates);
+      frontier_points.colwise() =
+          Eigen::Array2d(s_i.limits().max().x(), s_i.limits().max().y());
+      frontier_points -= (s_i.limits().resolution()) *
+                         (frontier_cell_indexes.cast<double>() + 0.5);
+
+      std::vector<bool> ok(static_cast<size_t>(num_frontier_candidates), true);
+      // Perform stabbing query tests of current submap's s_i frontier
+      // cells against temporally previous submaps
+      int final_num_frontier_cells = num_frontier_candidates;
+      for (const auto& previous_submap : previous_submaps_to_cleanup) {
+        Eigen::Array2Xi frontier_cell_2_indexes =
+            ((frontier_points.colwise() -
+              previous_submap->limits().max().array()) /
+                 (-previous_submap->limits().resolution()) -
+             0.5)
+                .round()
+                .cast<int>();
+
+        for (int i = 0; i < num_frontier_candidates; i++) {
+          Eigen::Array2i xy_index{frontier_cell_2_indexes(1, i),
+                                  frontier_cell_2_indexes(0, i)};
+          const bool is_unknown = previous_submap->is_unknown(xy_index);
+          if (ok[i] && !is_unknown) final_num_frontier_cells--;
+          ok[i] = ok[i] && is_unknown;
+        }
+      }
+
+      std::vector<double> final_frontier_points_vec;
+      final_frontier_points_vec.reserve(
+          static_cast<size_t>(final_num_frontier_cells) * 3);
+      for (int i = 0; i < num_frontier_candidates; i++) {
+        if (ok[i]) {
+          final_frontier_points_vec.insert(
+              final_frontier_points_vec.end(),
+              {frontier_points(0, i), frontier_points(1, i), 1.});
+        }
+      }
+
+      submap_frontier_cells.first = Eigen::Map<Eigen::Matrix3Xd>(
+          final_frontier_points_vec.data(), 3, final_num_frontier_cells);
+      submap_frontier_cells.second = {
+          static_cast<size_t>(final_num_frontier_cells),
+          cartographer::mapping::SubmapId{-1, -1}};
+
+      const double max_x =
+          s_i.limits().max().x() - s_i.limits().resolution() * offset.y();
+      const double max_y =
+          s_i.limits().max().y() - s_i.limits().resolution() * offset.x();
+      const double min_x =
+          s_i.limits().max().x() -
+          s_i.limits().resolution() * (offset.y() + cell_limits.num_y_cells);
+      const double min_y =
+          s_i.limits().max().y() -
+          s_i.limits().resolution() * (offset.x() + cell_limits.num_x_cells);
+
+      const Eigen::Vector3d p1 =
+          s_i.local_pose_inverse * Eigen::Vector3d{max_x, max_y, 0.};
+      const Eigen::Vector3d p2 =
+          s_i.local_pose_inverse * Eigen::Vector3d{min_x, min_y, 0.};
+      auto& bounding_box_info = bounding_boxes_[s_i.id];
+      bounding_box_info.local_box = std::make_pair(p1, p2);
+      bounding_box_info.last_global_box = CalculateBoundingBox(s_i);
+
+      for (const auto& previous_submap : previous_submaps_to_cleanup) {
+        // Perform testing of intersecting submaps' frontier points against
+        // the active submap
+        auto& previous_submap_frontier_points =
+            submap_frontier_points_.at(previous_submap->id);
+        const auto submap_frontier_points_to_cleanup =
+            std::move(previous_submap_frontier_points);
+        int num_frontier_cells_to_clean =
+            static_cast<int>(submap_frontier_points_to_cleanup.second.size());
+
+        Eigen::Array2Xi frontier_cell_2_indexes =
+            ((submap_frontier_points_to_cleanup.first.array()
+                  .topRows(2)
+                  .colwise() -
+              s_i.limits().max().array()) /
+                 (-s_i.limits().resolution()) -
+             0.5)
+                .round()
+                .cast<int>();
+
+        std::vector<double> final_cleaned_frontier_points_vec;
+        final_cleaned_frontier_points_vec.reserve(
+            static_cast<size_t>(num_frontier_cells_to_clean) * 3);
+        for (int i = 0; i < num_frontier_cells_to_clean; i++) {
+          Eigen::Array2i xy_index{frontier_cell_2_indexes(1, i),
+                                  frontier_cell_2_indexes(0, i)};
+          if (s_i.is_unknown(xy_index)) {
+            final_cleaned_frontier_points_vec.insert(
+                final_cleaned_frontier_points_vec.end(),
+                {submap_frontier_points_to_cleanup.first(0, i),
+                 submap_frontier_points_to_cleanup.first(1, i), 1.});
+            previous_submap_frontier_points.second.push_back(
+                submap_frontier_points_to_cleanup.second[i]);
+          }
+        }
+
+        previous_submap_frontier_points.first = Eigen::Map<Eigen::Matrix3Xd>(
+            final_cleaned_frontier_points_vec.data(), 3,
+            previous_submap_frontier_points.second.size());
+
+        if (std::find(additional_submaps_to_publish.begin(),
+                      additional_submaps_to_publish.end(),
+                      previous_submap->id) ==
+            additional_submaps_to_publish.end())
+          additional_submaps_to_publish.push_back(previous_submap->id);
+      }
+
+      // Keep only finished submaps in the tree in order to avoid lots of
+      // insertions and removals while the submaps are being built due to the
+      // bounding box being expanded.
+      const auto iter =
+          std::find(active_submaps_.begin(), active_submaps_.end(), s_i.id);
+      if (s_i.finished) {
+        // LOG(WARNING) << "Removing from active submaps: " << s_i.id;
+        if (iter != active_submaps_.end()) active_submaps_.erase(iter);
+        rt_.insert(std::make_pair(bounding_box_info.last_global_box, s_i.id));
+      } else {
+        if (iter == active_submaps_.end()) {
+          active_submaps_.push_back(s_i.id);
+        }
+      }
+
+      const auto intersecting_submaps = GetIntersectingFinishedSubmaps(id_i);
+      for (const auto& intersecting_submap : intersecting_submaps) {
+        if (std::find(additional_submaps_to_publish.begin(),
+                      additional_submaps_to_publish.end(),
+                      intersecting_submap) ==
+            additional_submaps_to_publish.end())
+          additional_submaps_to_publish.push_back(intersecting_submap);
       }
     }
 
-    const auto intersecting_submaps = GetIntersectingFinishedSubmaps(id_i);
-    for (const auto& intersecting_submap : intersecting_submaps) {
-      if (std::find(additional_submaps_to_publish.begin(),
-                    additional_submaps_to_publish.end(),
-                    intersecting_submap) == additional_submaps_to_publish.end())
-        additional_submaps_to_publish.push_back(intersecting_submap);
+    if (!CheckForOptimizationEvent()) {
+      PublishSubmaps(submap_ids, additional_submaps_to_publish);
     }
-  }
-
-  if (!CheckForOptimizationEvent()) {
-    PublishSubmaps(submap_ids, additional_submaps_to_publish);
-  }
+  });
 }
 
 void Detector::RebuildTree() {
@@ -487,8 +612,7 @@ void Detector::RebuildTree() {
   for (const auto& submap_data : submaps_.last_all_submap_data()) {
     const auto bounding_box_iter = bounding_boxes_.find(submap_data.id);
     if (bounding_box_iter == bounding_boxes_.end()) {
-      LOG(ERROR) << "Bounding box missing, should not happen.";
-      return;
+      continue;
     }
     auto& bounding_box_info = bounding_box_iter->second;
     const Submap& s_i(submaps_(submap_data.id));

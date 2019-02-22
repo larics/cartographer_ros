@@ -2,6 +2,7 @@
 #define CARTOGRAPHER_ROS_CARTOGRAPHER_ROS_FRONTIER_DETECTION_H
 
 #include <cartographer/io/submap_painter.h>
+#include <cartographer/mapping/2d/probability_grid.h>
 #include <cartographer/mapping/id.h>
 #include <cartographer/mapping/internal/2d/pose_graph_2d.h>
 #include <cartographer/transform/rigid_transform.h>
@@ -91,16 +92,19 @@ class Detector {
   struct Submap {
     Submap(const cartographer::mapping::SubmapId& id,
            const cartographer::mapping::PoseGraphInterface::SubmapData&
-               submap_data)
+               submap_data,
+           std::unique_ptr<cartographer::mapping::ProbabilityGrid> grid_copy)
         : id(id),
-          submap(*static_cast<const cartographer::mapping::Submap2D*>(
-              submap_data.submap.get())),
+          grid_original(*static_cast<const cartographer::mapping::Submap2D*>(
+                             submap_data.submap.get())
+                             ->grid()),
           pose(submap_data.pose), /* * submap.local_pose().inverse() *
               cartographer::transform::Rigid3d::Translation(
                   (Eigen::Vector3d() << limits.max(), 0.).finished())) */
-          local_pose_inverse(submap.local_pose().inverse()),
+          local_pose_inverse(submap_data.submap->local_pose().inverse()),
           to_global_position(rigid3d_to_isometry2d(pose * local_pose_inverse)),
-          to_local_submap_position(to_global_position.inverse()) {
+          to_local_submap_position(to_global_position.inverse()),
+          finished(submap_data.submap->insertion_finished()) {
       frontier_marker.header.frame_id = "map";
       frontier_marker.pose.orientation.w = 1.0;
       frontier_marker.type = visualization_msgs::Marker::POINTS;
@@ -111,20 +115,32 @@ class Detector {
       std::ostringstream ss;
       ss << "Trajectory " << id.trajectory_id << ", submap " << id.submap_index;
       frontier_marker.ns = ss.str();
+
+      if (grid_copy) {
+        is_copy = true;
+        Submap::grid_copy = std::move(grid_copy);
+      } else {
+        is_copy = false;
+      }
     }
 
     const cartographer::mapping::SubmapId id;
-    const cartographer::mapping::Submap2D& submap;
+    const cartographer::mapping::Grid2D& grid_original;
+    std::unique_ptr<cartographer::mapping::Grid2D> grid_copy;
+    bool is_copy;
     const cartographer::transform::Rigid3d pose;
     const cartographer::transform::Rigid3d local_pose_inverse;
     const Eigen::Isometry2d to_global_position;
     const Eigen::Isometry2d to_local_submap_position;
     Eigen::Matrix2Xd cached_frontier_marker_points_global;
     visualization_msgs::Marker frontier_marker;
+    const bool finished;
 
-    const cartographer::mapping::Grid2D& grid() const { return *submap.grid(); }
+    const cartographer::mapping::Grid2D& grid() const {
+      return is_copy ? *grid_copy : grid_original;
+    }
     const cartographer::mapping::MapLimits& limits() const {
-      return submap.grid()->limits();
+      return grid().limits();
     }
 
     int ToFlatIndex(const Eigen::Array2i& cell_index) const {
@@ -165,17 +181,35 @@ class Detector {
       return *IfExists(id);
     }
 
+    void UpdateCacheWithCopy(
+        const cartographer::mapping::SubmapId& id,
+        const cartographer::mapping::PoseGraphInterface::SubmapData&
+            submap_data,
+        std::unique_ptr<cartographer::mapping::ProbabilityGrid> grid_copy) {
+      auto iter = submaps_.lower_bound(id);
+      if (iter == submaps_.end() || iter->first != id) {
+        submaps_.emplace_hint(
+            iter,
+            std::make_pair(id, absl::make_unique<Detector::Submap>(
+                                   id, submap_data, std::move(grid_copy))));
+      } else {
+        iter->second = absl::make_unique<Detector::Submap>(
+            Detector::Submap(id, submap_data, std::move(grid_copy)));
+      }
+    }
+
     Submap* IfExists(const cartographer::mapping::SubmapId& id) const {
       auto iter = submaps_.lower_bound(id);
-      if (iter != submaps_.end() && iter->first == id) return &iter->second;
+      if (iter != submaps_.end() && iter->first == id)
+        return iter->second.get();
       auto submap_data = pose_graph_->GetSubmapData(id);
       if (submap_data.submap != nullptr) {
         // LOG(INFO) << "Cache has seen a new submap " << id;
-        return &submaps_
-                    .emplace_hint(
-                        iter,
-                        std::make_pair(id, Detector::Submap(id, submap_data)))
-                    ->second;
+        return submaps_
+            .emplace_hint(
+                iter, std::make_pair(id, absl::make_unique<Detector::Submap>(
+                                             id, submap_data, nullptr)))
+            ->second.get();
       } else {
         return nullptr;
       }
@@ -190,20 +224,40 @@ class Detector {
 
     void Invalidate() {
       // TODO update only poses instead of clearing out everything
+
+      std::vector<std::unique_ptr<Submap>>
+          unfinished_submap_copies_to_be_preserved;
+      for (auto& submap : submaps_) {
+        if (!submap.second->finished) {
+          unfinished_submap_copies_to_be_preserved.emplace_back(
+              std::move(submap.second));
+        }
+      }
       submaps_.clear();
       last_all_submap_data_ = pose_graph_->GetAllSubmapData();
 
       for (const auto& submap_data : last_all_submap_data_) {
-        submaps_.emplace(
-            std::make_pair(submap_data.id,
-                           Detector::Submap(submap_data.id, submap_data.data)));
+        if (submap_data.data.submap->insertion_finished()) {
+          submaps_.emplace(std::make_pair(
+              submap_data.id, absl::make_unique<Detector::Submap>(
+                                  submap_data.id, submap_data.data, nullptr)));
+        }
+      }
+
+      for (auto& submap : unfinished_submap_copies_to_be_preserved) {
+        auto iter = submaps_.lower_bound(submap->id);
+        auto id = submap->id;
+        if (iter == submaps_.end() || iter->first != id) {
+          submaps_.emplace_hint(iter, std::make_pair(id, std::move(submap)));
+        }
       }
     }
 
    private:
     using SubmapPair =
         std::pair<cartographer::mapping::SubmapId, Detector::Submap>;
-    mutable std::map<cartographer::mapping::SubmapId, Detector::Submap>
+    mutable std::map<cartographer::mapping::SubmapId,
+                     std::unique_ptr<Detector::Submap>>
         submaps_;
     const cartographer::mapping::PoseGraph2D* const pose_graph_;
 
@@ -230,15 +284,13 @@ class Detector {
     const Eigen::Vector3d p2_global =
         submap.pose * bounding_box_info.local_box.second;
     const Eigen::Vector3d p3_global =
-        submap.pose * Eigen::Vector3d{
-          bounding_box_info.local_box.first.x(),
-          bounding_box_info.local_box.second.y(),
-          0.};
+        submap.pose * Eigen::Vector3d{bounding_box_info.local_box.first.x(),
+                                      bounding_box_info.local_box.second.y(),
+                                      0.};
     const Eigen::Vector3d p4_global =
-        submap.pose * Eigen::Vector3d{
-            bounding_box_info.local_box.second.x(),
-            bounding_box_info.local_box.first.y(),
-            0.};
+        submap.pose * Eigen::Vector3d{bounding_box_info.local_box.second.x(),
+                                      bounding_box_info.local_box.first.y(),
+                                      0.};
 
     const auto minmax_x = std::minmax(
         {p1_global.x(), p2_global.x(), p3_global.x(), p4_global.x()});
