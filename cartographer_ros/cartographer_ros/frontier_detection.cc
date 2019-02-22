@@ -9,82 +9,15 @@
 #include <cartographer/mapping/2d/map_limits.h>
 #include <cartographer_ros/frontier_detection.h>
 #include <cartographer_ros/msg_conversion.h>
-#include <mutex>
-#include <condition_variable>
 
 namespace frontier {
 
-class LambdaWorker {
- public:
-  LambdaWorker() : finished_(false) {}
-
-  ~LambdaWorker() {
-    finish();
-    thread_.join();
-  }
-
-  void finish() {
-    {
-      std::unique_lock<std::mutex> lock(mutex_);
-      finished_ = true;
-    }
-    condition_.notify_one();
-  }
-
-  void PushIntoWorkQueue(std::function<void(void)> task) {
-    std::unique_lock<std::mutex> lock(mutex_);
-    if (!finished_) {
-      work_queue_.push_back(std::move(task));
-      condition_.notify_one();
-    }
-  }
-
-  int TaskCount() {
-    std::unique_lock<std::mutex> lock(mutex_);
-    return static_cast<int>(work_queue_.size());
-  }
-
-  void start() {
-    thread_ = std::thread([this]() {
-      while (true) {
-        int last_queue_size;
-        do {
-          std::function<void(void)> top_of_queue;
-          {
-            std::unique_lock<std::mutex> lock(mutex_);
-            if (finished_) return;
-            last_queue_size = work_queue_.size();
-            if (last_queue_size > 0) {
-              top_of_queue = std::move(work_queue_.front());
-              work_queue_.pop_front();
-            }
-          }
-          if (last_queue_size > 0) top_of_queue();
-        } while (last_queue_size > 1);
-        std::unique_lock<std::mutex> lock(mutex_);
-        if (work_queue_.size() == 0 && !finished_) {
-          condition_.wait(lock, []() { return true; });
-        }
-      }
-    });
-  }
-
- private:
-  std::deque<std::function<void(void)>> work_queue_;
-  std::thread thread_;
-
-  std::condition_variable condition_;
-  std::mutex mutex_;
-  bool finished_;
-};
-
-LambdaWorker lambda_worker;
 Detector::Detector(cartographer::mapping::PoseGraph2D* const pose_graph)
     : publisher_initialized_(false),
       last_optimizations_performed_(-1),
       pose_graph_(pose_graph),
       submaps_(pose_graph_) {
-  lambda_worker.start();
+  lambda_worker_.start();
 }
 
 void Detector::InitPublisher() {
@@ -335,7 +268,7 @@ void Detector::HandleSubmapUpdates(
     }
   }
 
-  if (!do_not_skip && lambda_worker.TaskCount() > 10) return;
+  if (!do_not_skip && lambda_worker_.TaskCount() > 10) return;
 
   auto* submap_copies_ptr = new std::vector<
       std::pair<cartographer::mapping::PoseGraphInterface::SubmapData,
@@ -351,7 +284,7 @@ void Detector::HandleSubmapUpdates(
                     ->grid())));
   }
 
-  lambda_worker.PushIntoWorkQueue([this, submap_copies_ptr, submap_ids]() {
+  lambda_worker_.PushIntoWorkQueue([this, submap_copies_ptr, submap_ids]() {
     std::unique_ptr<std::vector<
         std::pair<cartographer::mapping::PoseGraphInterface::SubmapData,
                   std::unique_ptr<cartographer::mapping::ProbabilityGrid>>>>

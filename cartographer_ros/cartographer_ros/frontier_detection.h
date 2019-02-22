@@ -12,6 +12,7 @@
 #include <visualization_msgs/MarkerArray.h>
 #include <atomic>
 #include <mutex>
+#include <condition_variable>
 
 #include <boost/geometry.hpp>
 #include <boost/geometry/geometries/box.hpp>
@@ -38,16 +39,80 @@ inline Eigen::Isometry2d rigid3d_to_isometry2d(
              rigid.rotation().toRotationMatrix().block<2, 2>(0, 0));
 }
 
+class LambdaWorker {
+ public:
+  LambdaWorker() : finished_(false) {}
+
+  ~LambdaWorker() {
+    finish();
+    thread_.join();
+  }
+
+  void finish() {
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      finished_ = true;
+    }
+    condition_.notify_one();
+  }
+
+  void PushIntoWorkQueue(std::function<void(void)> task) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    if (!finished_) {
+      work_queue_.push_back(std::move(task));
+      condition_.notify_one();
+    }
+  }
+
+  int TaskCount() {
+    std::unique_lock<std::mutex> lock(mutex_);
+    return static_cast<int>(work_queue_.size());
+  }
+
+  void start() {
+    thread_ = std::thread([this]() {
+      while (true) {
+        int last_queue_size;
+        do {
+          std::function<void(void)> top_of_queue;
+          {
+            std::unique_lock<std::mutex> lock(mutex_);
+            if (finished_) return;
+            last_queue_size = work_queue_.size();
+            if (last_queue_size > 0) {
+              top_of_queue = std::move(work_queue_.front());
+              work_queue_.pop_front();
+            }
+          }
+          if (last_queue_size > 0) top_of_queue();
+        } while (last_queue_size > 1);
+        std::unique_lock<std::mutex> lock(mutex_);
+        if (work_queue_.size() == 0 && !finished_) {
+          condition_.wait(lock, []() { return true; });
+        }
+      }
+    });
+  }
+
+ private:
+  std::deque<std::function<void(void)>> work_queue_;
+  std::thread thread_;
+
+  std::condition_variable condition_;
+  std::mutex mutex_;
+  bool finished_;
+};
+
 class Detector {
  public:
   Detector(cartographer::mapping::PoseGraph2D* pose_graph);
-
-  void InitPublisher();
 
   // Performs local frontier edge detection.
   void HandleSubmapUpdates(
       const std::vector<cartographer::mapping::SubmapId>& submap_ids);
 
+ private:
+  void InitPublisher();
   void PublishAllSubmaps();
   void PublishSubmaps(
       const std::vector<cartographer::mapping::SubmapId>& submap_ids,
@@ -58,7 +123,6 @@ class Detector {
   std::vector<cartographer::mapping::SubmapId> GetIntersectingFinishedSubmaps(
       const cartographer::mapping::SubmapId& id_i);
 
- private:
   using Point = bg::model::point<double, 2, bg::cs::cartesian>;
   using Box = bg::model::box<Point>;
   using Value = std::pair<Box, cartographer::mapping::SubmapId>;
@@ -88,6 +152,7 @@ class Detector {
   int last_optimizations_performed_;
 
   cartographer::mapping::PoseGraph2D* pose_graph_;
+  LambdaWorker lambda_worker_;
 
   struct Submap {
     Submap(const cartographer::mapping::SubmapId& id,
