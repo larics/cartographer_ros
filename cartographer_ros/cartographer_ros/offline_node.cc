@@ -157,7 +157,7 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
   }
 
   ros::AsyncSpinner async_spinner(kSingleThreaded);
-  //async_spinner.start();
+  async_spinner.start();
   rosgraph_msgs::Clock clock;
   auto clock_republish_timer = node.node_handle()->createWallTimer(
       ::ros::WallDuration(kClockPublishFrequencySec),
@@ -344,10 +344,9 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
     if (is_last_message_in_bag) {
       node.FinishTrajectory(trajectory_id);
     }
-    ros::spinOnce();
+    //ros::spinOnce();
   }
 
-  async_spinner.start();
   // Ensure the clock is republished after the bag has been finished, during the
   // final optimization, serialization, and optional indefinite spinning at the
   // end.
