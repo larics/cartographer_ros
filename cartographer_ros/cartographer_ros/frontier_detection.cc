@@ -191,7 +191,7 @@ visualization_msgs::Marker& Detector::CreateMarkerForSubmap(
     for (int i = 0; i < static_cast<int>(updated_submap_ids->size()); i++) {
       updated_submaps.push_back(submaps_((*updated_submap_ids)[i]));
       indices_in_updated_submaps.push_back(
-          (((s_i.to_local_submap_position *
+          (((updated_submaps[i].to_local_submap_position *
              s_i.cached_frontier_marker_points_global)
                 .array()
                 .colwise() -
