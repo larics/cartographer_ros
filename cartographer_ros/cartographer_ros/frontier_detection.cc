@@ -18,6 +18,8 @@ Detector::Detector(cartographer::mapping::PoseGraph2D* const pose_graph)
       pose_graph_(pose_graph),
       submaps_(pose_graph_) {
   lambda_worker_.start();
+  optimization_timer_ = ros::NodeHandle().createWallTimer(
+      ::ros::WallDuration(0.2), &Detector::CheckOptimizationEventsPeriodicallyWhenIdle, this);
 }
 
 void Detector::InitPublisher() {
@@ -76,6 +78,13 @@ bool Detector::CheckForOptimizationEvent() {
   RebuildTree();
   PublishAllSubmaps();
   return true;
+}
+
+void Detector::CheckOptimizationEventsPeriodicallyWhenIdle(
+    const ::ros::WallTimerEvent&) {
+  if (lambda_worker_.TaskCount() == 0) {
+    lambda_worker_.PushIntoWorkQueue([this]() { CheckForOptimizationEvent(); });
+  }
 }
 
 visualization_msgs::Marker& Detector::CreateMarkerForSubmap(

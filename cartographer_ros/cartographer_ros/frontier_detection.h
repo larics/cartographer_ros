@@ -119,6 +119,7 @@ class Detector {
       const std::vector<cartographer::mapping::SubmapId>& additional_submaps);
 
   bool CheckForOptimizationEvent();
+  void CheckOptimizationEventsPeriodicallyWhenIdle(const ::ros::WallTimerEvent&);
 
   std::vector<cartographer::mapping::SubmapId> GetIntersectingFinishedSubmaps(
       const cartographer::mapping::SubmapId& id_i);
@@ -153,6 +154,7 @@ class Detector {
 
   cartographer::mapping::PoseGraph2D* pose_graph_;
   LambdaWorker lambda_worker_;
+  ros::WallTimer optimization_timer_;
 
   struct Submap {
     Submap(const cartographer::mapping::SubmapId& id,
