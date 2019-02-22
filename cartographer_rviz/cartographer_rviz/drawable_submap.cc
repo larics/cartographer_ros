@@ -40,7 +40,7 @@ constexpr float kAlphaUpdateThreshold = 0.2f;
 const Ogre::ColourValue kSubmapIdColor(Ogre::ColourValue::Red);
 const Eigen::Vector3d kSubmapIdPosition(0.0, 0.0, 0.3);
 constexpr float kSubmapIdCharHeight = 0.2f;
-constexpr int kNumberOfSlicesPerSubmap = 3;
+constexpr int kNumberOfSlicesPerSubmap = 2;
 
 }  // namespace
 
@@ -149,8 +149,8 @@ bool DrawableSubmap::MaybeFetchTexture(ros::ServiceClient* const client) {
         auto& new_texture = submap_textures;
         auto texture_filtered =
             cartographer::io::SubmapTexture(new_texture->textures.at(0));
-        auto frontier_texture =
-            cartographer::io::SubmapTexture(new_texture->textures.at(0));
+        //auto frontier_texture =
+        //    cartographer::io::SubmapTexture(new_texture->textures.at(0));
 
         for (int i = 0; i < texture_filtered.pixels.intensity.size(); i++) {
           char& intensity = texture_filtered.pixels.intensity.at(i);
@@ -168,7 +168,7 @@ bool DrawableSubmap::MaybeFetchTexture(ros::ServiceClient* const client) {
               intensity = 255;
           }
         }
-        const int w = texture_filtered.width;
+        /*const int w = texture_filtered.width;
         const int h = texture_filtered.height;
         auto is_unknown = [&texture_filtered](int index) {
           return texture_filtered.pixels.intensity.at(index) == 0 &&
@@ -208,9 +208,9 @@ bool DrawableSubmap::MaybeFetchTexture(ros::ServiceClient* const client) {
                   std::make_pair(FromFlatIndex(i, frontier_texture), nullptr));
             }
           }
-        }
+        }*/
           new_texture->textures.push_back(texture_filtered);
-          new_texture->textures.push_back(frontier_texture);
+          //new_texture->textures.push_back(frontier_texture);
       }
 
       submap_textures_ = std::move(submap_textures);
