@@ -181,7 +181,8 @@ visualization_msgs::Marker& Detector::CreateMarkerForSubmap(
     // Computing the intersecting submaps. Check if frontier points were
     // covered by an active submap update.
     updated_frontier_marker_points_global.reserve(
-        static_cast<size_t>(s_i.cached_frontier_marker_points_global.cols()) * 2);
+        static_cast<size_t>(s_i.cached_frontier_marker_points_global.cols()) *
+        2);
 
     std::vector<Eigen::Array2Xi> indices_in_updated_submaps;
     indices_in_updated_submaps.reserve(updated_submap_ids->size());
@@ -256,7 +257,8 @@ void Detector::HandleSubmapUpdates(
     const Submap& s_i(submaps_(id_i));
     auto& submap_frontier_cells = submap_frontier_points_[id_i];
 
-    int previous_frontier_size = static_cast<int>(submap_frontier_cells.second.size());
+    int previous_frontier_size =
+        static_cast<int>(submap_frontier_cells.second.size());
     submap_frontier_cells.second.clear();
 
     Eigen::Array2i offset;
@@ -323,7 +325,8 @@ void Detector::HandleSubmapUpdates(
     }
 
     std::vector<int> frontier_cell_indexes_vec;
-    frontier_cell_indexes_vec.reserve(static_cast<size_t>(previous_frontier_size) * 2);
+    frontier_cell_indexes_vec.reserve(
+        static_cast<size_t>(previous_frontier_size) * 2);
     for (int y = 0; y < y_dim; y++)
       for (int x = 0; x < x_dim; x++)
         if (frontier(x, y))
@@ -342,7 +345,7 @@ void Detector::HandleSubmapUpdates(
     frontier_points.colwise() =
         Eigen::Array2d(s_i.limits().max().x(), s_i.limits().max().y());
     frontier_points -= (s_i.limits().resolution()) *
-                      (frontier_cell_indexes.cast<double>() + 0.5);
+                       (frontier_cell_indexes.cast<double>() + 0.5);
 
     std::vector<bool> ok(static_cast<size_t>(num_frontier_candidates), true);
     // Perform stabbing query tests of current submap's s_i frontier
@@ -379,8 +382,9 @@ void Detector::HandleSubmapUpdates(
 
     submap_frontier_cells.first = Eigen::Map<Eigen::Matrix3Xd>(
         final_frontier_points_vec.data(), 3, final_num_frontier_cells);
-    submap_frontier_cells.second = {static_cast<size_t>(final_num_frontier_cells),
-                                    cartographer::mapping::SubmapId{-1, -1}};
+    submap_frontier_cells.second = {
+        static_cast<size_t>(final_num_frontier_cells),
+        cartographer::mapping::SubmapId{-1, -1}};
 
     const double max_x =
         s_i.limits().max().x() - s_i.limits().resolution() * offset.y();
@@ -443,8 +447,7 @@ void Detector::HandleSubmapUpdates(
 
       if (std::find(additional_submaps_to_publish.begin(),
                     additional_submaps_to_publish.end(),
-                    previous_submap->id) ==
-          additional_submaps_to_publish.end())
+                    previous_submap->id) == additional_submaps_to_publish.end())
         additional_submaps_to_publish.push_back(previous_submap->id);
     }
 
