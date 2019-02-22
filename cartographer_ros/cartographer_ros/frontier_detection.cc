@@ -100,10 +100,11 @@ void Detector::PublishAllSubmaps() {
 
   std::unique_lock<std::mutex> lock(mutex_);
 
-  for (const auto& submap_data_i : submaps_.last_all_submap_data())
-    frontier_markers.markers.push_back(CreateMarkerForSubmap(
-        submap_data_i.id, nullptr /* updated_submap_ids */,
-        true /* check_against_active */));
+  for (const auto& submap_i : submap_frontier_points_) {
+    frontier_markers.markers.push_back(
+        CreateMarkerForSubmap(submap_i.first, nullptr /* updated_submap_ids */,
+                              true /* check_against_active */));
+  }
 
   frontier_publisher_.publish(frontier_markers);
 }
@@ -329,8 +330,7 @@ void Detector::HandleSubmapUpdates(
   for (int i = 0; i < static_cast<int>(submap_ids.size()); i++) {
     const auto& id_i = submap_ids[i];
     submap_data[i] = pose_graph_->GetSubmapData(id_i);
-    if (submap_data[i].submap->insertion_finished() ||
-        submap_data[i].submap->num_range_data() == 1) {
+    if (submap_data[i].submap->insertion_finished()) {
       do_not_skip = true;
     }
   }
