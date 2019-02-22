@@ -229,6 +229,21 @@ class Detector {
         submap.pose * bounding_box_info.local_box.first;
     const Eigen::Vector3d p2_global =
         submap.pose * bounding_box_info.local_box.second;
+    const Eigen::Vector3d p3_global =
+        submap.pose * Eigen::Vector3d{
+          bounding_box_info.local_box.first.x(),
+          bounding_box_info.local_box.second.y(),
+          0.};
+    const Eigen::Vector3d p4_global =
+        submap.pose * Eigen::Vector3d{
+            bounding_box_info.local_box.second.x(),
+            bounding_box_info.local_box.first.y(),
+            0.};
+
+    const auto minmax_x = std::minmax(
+        {p1_global.x(), p2_global.x(), p3_global.x(), p4_global.x()});
+    const auto minmax_y = std::minmax(
+        {p1_global.y(), p2_global.y(), p3_global.y(), p4_global.y()});
 
     /*visualization_msgs::Marker marker;
     marker.header.frame_id = "map";
@@ -244,21 +259,31 @@ class Detector {
     submap.id.submap_index; marker.ns = ss.str();
 
     geometry_msgs::Point point;
-    point.x = p1_global.x();
-    point.y = p1_global.y();
+    point.x = minmax_x.first;
+    point.y = minmax_y.first;
     marker.points.push_back(point);
-    point.x = p2_global.x();
-    point.y = p2_global.y();
+    point.x = minmax_x.second;
+    point.y = minmax_y.first;
+    marker.points.push_back(point);
+    marker.points.push_back(point);
+    point.x = minmax_x.second;
+    point.y = minmax_y.second;
+    marker.points.push_back(point);
+    marker.points.push_back(point);
+    point.x = minmax_x.first;
+    point.y = minmax_y.second;
+    marker.points.push_back(point);
+    marker.points.push_back(point);
+    point.x = minmax_x.first;
+    point.y = minmax_y.first;
     marker.points.push_back(point);
 
     visualization_msgs::MarkerArray frontier_markers;
     frontier_markers.markers.push_back(marker);
     frontier_publisher_.publish(frontier_markers);*/
 
-    return Box{Point(std::min(p1_global.x(), p2_global.x()),
-                     std::min(p1_global.y(), p2_global.y())),
-               Point(std::max(p1_global.x(), p2_global.x()),
-                     std::max(p1_global.y(), p2_global.y()))};
+    return Box{Point(minmax_x.first, minmax_y.first),
+               Point(minmax_x.second, minmax_y.second)};
   }
 
   void RebuildTree();
