@@ -68,6 +68,7 @@ class Node {
 
   ::ros::NodeHandle node_handle_;
   const double resolution_;
+  ::ros::Publisher target_submaps = node_handle_.advertise<::cartographer_ros_msgs::SubmapList>("/used_submaps",100);
 
   absl::Mutex mutex_;
   ::ros::ServiceClient client_ GUARDED_BY(mutex_);
@@ -77,6 +78,7 @@ class Node {
   ::ros::WallTimer occupancy_grid_publisher_timer_;
   std::string last_frame_id_;
   ros::Time last_timestamp_;
+  cartographer_ros_msgs::SubmapList last_submap_list_;
 };
 
 Node::Node(const double resolution, const double publish_period_sec)
@@ -101,6 +103,8 @@ Node::Node(const double resolution, const double publish_period_sec)
 void Node::HandleSubmapList(
     const cartographer_ros_msgs::SubmapList::ConstPtr& msg) {
   absl::MutexLock locker(&mutex_);
+
+  last_submap_list_=*msg;
 
   // We do not do any work if nobody listens.
   if (occupancy_grid_publisher_.getNumSubscribers() == 0) {
@@ -169,6 +173,7 @@ void Node::DrawAndPublish(const ::ros::WallTimerEvent& unused_timer_event) {
   std::unique_ptr<nav_msgs::OccupancyGrid> msg_ptr = CreateOccupancyGridMsg(
       painted_slices, resolution_, last_frame_id_, last_timestamp_);
   occupancy_grid_publisher_.publish(*msg_ptr);
+  target_submaps.publish(last_submap_list_);
 }
 
 }  // namespace

@@ -28,13 +28,19 @@ using carto::transform::Rigid3d;
 
 namespace {
 
-const std::string& CheckNoLeadingSlash(const std::string& frame_id) {
-  if (frame_id.size() > 0) {
-    CHECK_NE(frame_id[0], '/') << "The frame_id " << frame_id
+const std::string CheckNoLeadingSlash(const std::string& frame_id) {
+  std::string removed_leading_slash=frame_id;
+  if (removed_leading_slash[0]=='/'){
+    removed_leading_slash.erase(0,1);
+  }
+  if (removed_leading_slash.size() > 0) {
+    CHECK_NE(removed_leading_slash[0], '/') << "The frame_id " << removed_leading_slash
                                << " should not start with a /. See 1.7 in "
                                   "http://wiki.ros.org/tf2/Migration.";
+
+
   }
-  return frame_id;
+  return removed_leading_slash;
 }
 
 }  // namespace
@@ -51,8 +57,13 @@ SensorBridge::SensorBridge(
 std::unique_ptr<carto::sensor::OdometryData> SensorBridge::ToOdometryData(
     const nav_msgs::Odometry::ConstPtr& msg) {
   const carto::common::Time time = FromRos(msg->header.stamp);
-  const auto sensor_to_tracking = tf_bridge_.LookupToTracking(
-      time, CheckNoLeadingSlash(msg->child_frame_id));
+  const auto sensor_to_tracking = 
+      msg->child_frame_id.empty()
+      ? ::absl::make_unique<
+            ::cartographer::transform::Rigid3d>(
+            ::cartographer::transform::Rigid3d::Identity())
+      : tf_bridge_.LookupToTracking(
+            time, CheckNoLeadingSlash(msg->child_frame_id));
   if (sensor_to_tracking == nullptr) {
     return nullptr;
   }
