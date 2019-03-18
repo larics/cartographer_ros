@@ -31,7 +31,7 @@ namespace {
 
 using ::cartographer::transform::Rigid3d;
 
-constexpr double kTrajectoryLineStripMarkerScale = 0.07;
+constexpr double kTrajectoryLineStripMarkerScale = 0.07*2;
 constexpr double kLandmarkMarkerScale = 0.2;
 constexpr double kConstraintMarkerScale = 0.025;
 
@@ -55,7 +55,7 @@ visualization_msgs::Marker CreateTrajectoryMarker(const int trajectory_id,
   marker.color = ToMessage(cartographer::io::GetColor(trajectory_id));
   marker.scale.x = kTrajectoryLineStripMarkerScale;
   marker.pose.orientation.w = 1.;
-  marker.pose.position.z = 0.05;
+  marker.pose.position.z = 0.15;
   return marker;
 }
 
@@ -332,19 +332,21 @@ visualization_msgs::MarkerArray MapBuilderBridge::GetTrajectoryNodeList() {
         continue;
       }
       const ::geometry_msgs::Point node_point =
-          ToGeometryMsgPoint(node_id_data.data.global_pose.translation());
+          ToGeometryMsgPoint({node_id_data.data.global_pose.translation().x(),
+                              node_id_data.data.global_pose.translation().y(),
+                              5. * (node_id_data.id.node_index/100)});
       marker.points.push_back(node_point);
 
       if (node_id_data.id.node_index ==
           last_inter_trajectory_constrained_node) {
         PushAndResetLineMarker(&marker, &trajectory_node_list.markers);
         marker.points.push_back(node_point);
-        marker.color.a = 0.5;
+        //marker.color.a = 0.5;
       }
       if (node_id_data.id.node_index == last_inter_submap_constrained_node) {
         PushAndResetLineMarker(&marker, &trajectory_node_list.markers);
         marker.points.push_back(node_point);
-        marker.color.a = 0.25;
+        //marker.color.a = 0.25;
       }
       // Work around the 16384 point limit in RViz by splitting the
       // trajectory into multiple markers.

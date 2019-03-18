@@ -70,8 +70,10 @@ OgreSlice::OgreSlice(const ::cartographer::mapping::SubmapId& id, int slice_id,
   material_->setReceiveShadows(false);
   material_->getTechnique(0)->setLightingEnabled(false);
   material_->setCullingMode(Ogre::CULL_NONE);
-  material_->setDepthBias(-1.f, 0.f);
-  material_->setDepthWriteEnabled(false);
+  material_->setDepthBias(-.5f, 0.f);
+  if (!red_) material_->setDepthWriteEnabled(true);
+    else material_->setDepthWriteEnabled(false);
+  //material_->setDepthWriteEnabled(false);
   slice_node_->attachObject(manual_object_);
   if (red_) manual_object_->setRenderQueueGroup(Ogre::RENDER_QUEUE_BACKGROUND);
 }

@@ -40,7 +40,7 @@ constexpr float kAlphaUpdateThreshold = 0.2f;
 const Ogre::ColourValue kSubmapIdColor(Ogre::ColourValue::Red);
 const Eigen::Vector3d kSubmapIdPosition(0.0, 0.0, 0.3);
 constexpr float kSubmapIdCharHeight = 0.2f;
-constexpr int kNumberOfSlicesPerSubmap = 2;
+constexpr int kNumberOfSlicesPerSubmap = 3;
 
 }  // namespace
 
@@ -102,6 +102,8 @@ void DrawableSubmap::Update(
   absl::MutexLock locker(&mutex_);
   metadata_version_ = metadata.submap_version;
   pose_ = ::cartographer_ros::ToRigid3d(metadata.pose);
+  pose_ = cartographer::transform::Rigid3d{
+    {pose_.translation().x(), pose_.translation().y(), id_.submap_index * 5.}, pose_.rotation() };
   submap_node_->setPosition(ToOgre(pose_.translation()));
   submap_node_->setOrientation(ToOgre(pose_.rotation()));
   display_context_->queueRender();
@@ -149,8 +151,8 @@ bool DrawableSubmap::MaybeFetchTexture(ros::ServiceClient* const client) {
         auto& new_texture = submap_textures;
         auto texture_filtered =
             cartographer::io::SubmapTexture(new_texture->textures.at(0));
-        //auto frontier_texture =
-        //    cartographer::io::SubmapTexture(new_texture->textures.at(0));
+        auto frontier_texture =
+            cartographer::io::SubmapTexture(new_texture->textures.at(0));
 
         for (int i = 0; i < texture_filtered.pixels.intensity.size(); i++) {
           char& intensity = texture_filtered.pixels.intensity.at(i);
@@ -168,7 +170,7 @@ bool DrawableSubmap::MaybeFetchTexture(ros::ServiceClient* const client) {
               intensity = 255;
           }
         }
-        /*const int w = texture_filtered.width;
+        const int w = texture_filtered.width;
         const int h = texture_filtered.height;
         auto is_unknown = [&texture_filtered](int index) {
           return texture_filtered.pixels.intensity.at(index) == 0 &&
@@ -202,15 +204,28 @@ bool DrawableSubmap::MaybeFetchTexture(ros::ServiceClient* const client) {
             check_neighbour(i - w + 1);
             check_neighbour(i - w - 1);
             if (free_neighbours >= 3 && unknown_neighbours >= 3) {
-              frontier_texture.pixels.intensity.at(i) = 255;
-              frontier_texture.pixels.alpha.at(i) = 255;
+              auto mark = [&](int i) {
+                if(is_in_limits(i)) {
+                  frontier_texture.pixels.intensity.at(i) = 255;
+                  frontier_texture.pixels.alpha.at(i) = 255;
+                } };
+              mark(i);
+              mark(i + 1);
+              mark(i - 1);
+              mark(i + w);
+              mark(i + w + 1);
+              mark(i + w - 1);
+              mark(i - w);
+              mark(i - w + 1);
+              mark(i - w - 1);
+
               submap_frontier_cells.push_back(
                   std::make_pair(FromFlatIndex(i, frontier_texture), nullptr));
             }
           }
-        }*/
+        }
           new_texture->textures.push_back(texture_filtered);
-          //new_texture->textures.push_back(frontier_texture);
+          new_texture->textures.push_back(frontier_texture);
       }
 
       submap_textures_ = std::move(submap_textures);

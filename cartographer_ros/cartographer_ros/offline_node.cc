@@ -371,12 +371,13 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
   LOG(INFO) << "Total submap update events:" << total_submap_updates;
   LOG(INFO) << "Skipped submap update events:" << skipped_updates;
   LOG(INFO) << "Optimization events:" << optimization_events;
-  exit(0);
+  //exit(0);
 
   // Ensure the clock is republished after the bag has been finished, during the
   // final optimization, serialization, and optional indefinite spinning at the
   // end.
   clock_republish_timer.start();
+  async_spinner.start();
   node.RunFinalOptimization();
 
 
