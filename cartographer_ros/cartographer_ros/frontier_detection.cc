@@ -16,7 +16,7 @@ int skipped_updates = 0;
 
 namespace frontier {
 
-Detector::Detector(cartographer::mapping::PoseGraph2D* const pose_graph)
+Detector::Detector(cartographer::mapping::PoseGraph* const pose_graph)
     : publisher_initialized_(false),
       last_optimizations_performed_(-1),
       pose_graph_(pose_graph),
