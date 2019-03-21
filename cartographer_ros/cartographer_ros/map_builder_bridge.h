@@ -34,6 +34,7 @@
 #include "cartographer_ros_msgs/SubmapEntry.h"
 #include "cartographer_ros_msgs/SubmapList.h"
 #include "cartographer_ros_msgs/SubmapQuery.h"
+#include "cartographer_ros/frontier_detection.h"
 #include "nav_msgs/OccupancyGrid.h"
 
 // Abseil unfortunately pulls in winnt.h, which #defines DELETE.
@@ -66,6 +67,10 @@ class MapBuilderBridge {
       const NodeOptions& node_options,
       std::unique_ptr<cartographer::mapping::MapBuilderInterface> map_builder,
       tf2_ros::Buffer* tf_buffer);
+    ~MapBuilderBridge() {
+      frontier_detector_.NotifyEnd();
+    }
+
 
   MapBuilderBridge(const MapBuilderBridge&) = delete;
   MapBuilderBridge& operator=(const MapBuilderBridge&) = delete;
@@ -101,9 +106,14 @@ class MapBuilderBridge {
   void OnLocalSlamResult(const int trajectory_id,
                          const ::cartographer::common::Time time,
                          const ::cartographer::transform::Rigid3d local_pose,
-                         ::cartographer::sensor::RangeData range_data_in_local)
+                         ::cartographer::sensor::RangeData range_data_in_local,
+                         const std::unique_ptr<const ::cartographer::mapping::
+                              TrajectoryBuilderInterface::InsertionResult>&
+          insertion_result)
+
       LOCKS_EXCLUDED(mutex_);
 
+  void OnGlobalSlamResult();
   absl::Mutex mutex_;
   const NodeOptions node_options_;
   std::unordered_map<int,
@@ -111,6 +121,7 @@ class MapBuilderBridge {
       local_slam_data_ GUARDED_BY(mutex_);
   std::unique_ptr<cartographer::mapping::MapBuilderInterface> map_builder_;
   tf2_ros::Buffer* const tf_buffer_;
+  std::atomic<int> optimizations_performed_;
 
   std::unordered_map<std::string /* landmark ID */, int> landmark_to_index_;
 
@@ -118,6 +129,8 @@ class MapBuilderBridge {
   std::unordered_map<int, TrajectoryOptions> trajectory_options_;
   std::unordered_map<int, std::unique_ptr<SensorBridge>> sensor_bridges_;
   std::unordered_map<int, size_t> trajectory_to_highest_marker_id_;
+
+  frontier::Detector frontier_detector_;
 };
 
 }  // namespace cartographer_ros
