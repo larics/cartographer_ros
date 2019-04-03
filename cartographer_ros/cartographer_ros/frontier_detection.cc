@@ -64,14 +64,14 @@ void Detector::PublishSubmaps(
     // LOG(ERROR) << "publishing submap " << id_i.submap_index;
     frontier_markers.markers.push_back(
         CreateMarkerForSubmap(id_i, nullptr /* updated_submap_ids */,
-                              false /* check_against_active */));
+                              true /* check_against_active */));
   }
 
   for (const auto& id_additional : additional_submaps) {
     // LOG(ERROR) << "publishing submap " << id_i.submap_index;
     frontier_markers.markers.push_back(CreateMarkerForSubmap(
         id_additional, &submap_ids /* updated_submap_ids */,
-        false /* check_against_active */));
+        true /* check_against_active */));
   }
 
   frontier_publisher_.publish(frontier_markers);
@@ -553,6 +553,17 @@ void Detector::HandleSubmapUpdates(
                       intersecting_submap) ==
             additional_submaps_to_publish.end())
           additional_submaps_to_publish.push_back(intersecting_submap);
+      }
+
+      for (const auto& active_submap : active_submaps_) {
+        if (active_submap.trajectory_id != s_i.id.trajectory_id &&
+            bg::intersects(
+                bounding_box_info.last_global_box,
+                bounding_boxes_.at(active_submap).last_global_box) &&
+             std::find(additional_submaps_to_publish.begin(),
+                      additional_submaps_to_publish.end(),
+                      active_submap) == additional_submaps_to_publish.end())
+          additional_submaps_to_publish.push_back(active_submap);
       }
     }
 
