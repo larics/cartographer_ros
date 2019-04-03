@@ -300,6 +300,7 @@ void Detector::HandleSubmapUpdates(
   for (int i = 0; i < static_cast<int>(submap_ids.size()); i++) {
     (*submap_copies_ptr)[i] = std::make_pair(
         submap_data[i],
+        submap_data[i].submap->insertion_finished() ? nullptr :
         absl::make_unique<cartographer::mapping::ProbabilityGrid>(
             *static_cast<const cartographer::mapping::ProbabilityGrid*>(
                 static_cast<const cartographer::mapping::Submap2D*>(
@@ -323,7 +324,7 @@ void Detector::HandleSubmapUpdates(
 
     for (const auto& id_i : submap_ids) {
       const Submap& s_i(submaps_(id_i));
-      CHECK(s_i.is_copy);
+      CHECK(s_i.is_copy && !s_i.finished || !s_i.is_copy && s_i.finished);
 
       int sum = 0;
       for (auto& cost : s_i.grid().correspondence_cost_cells()) {
@@ -565,19 +566,17 @@ void Detector::RebuildTree() {
   std::unique_lock<std::mutex> lock(mutex_);
   std::vector<Value> rectangles;
 
-  for (const auto& submap_data : submaps_.last_all_submap_data()) {
-    const auto bounding_box_iter = bounding_boxes_.find(submap_data.id);
+  for (const auto& s_i : submaps_.submaps()) {
+    const auto bounding_box_iter = bounding_boxes_.find(s_i.first);
     if (bounding_box_iter == bounding_boxes_.end()) {
       continue;
     }
     auto& bounding_box_info = bounding_box_iter->second;
-    const Submap& s_i(submaps_(submap_data.id));
-    bounding_box_info.last_global_box = CalculateBoundingBox(s_i);
+    bounding_box_info.last_global_box = CalculateBoundingBox(*s_i.second);
 
-    if (std::find(active_submaps_.begin(), active_submaps_.end(), s_i.id) ==
-        active_submaps_.end()) {
+    if (s_i.second->finished) {
       rectangles.emplace_back(
-          std::make_pair(bounding_box_info.last_global_box, s_i.id));
+          std::make_pair(bounding_box_info.last_global_box, s_i.first));
     }
   }
 
