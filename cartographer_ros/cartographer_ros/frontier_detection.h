@@ -2,8 +2,8 @@
 #define CARTOGRAPHER_ROS_CARTOGRAPHER_ROS_FRONTIER_DETECTION_H
 
 #include <cartographer/io/submap_painter.h>
-#include <cartographer/mapping/2d/submap_2d.h>
 #include <cartographer/mapping/2d/probability_grid.h>
+#include <cartographer/mapping/2d/submap_2d.h>
 #include <cartographer/mapping/id.h>
 #include <cartographer/mapping/pose_graph.h>
 #include <cartographer/transform/rigid_transform.h>
@@ -12,8 +12,8 @@
 #include <visualization_msgs/Marker.h>
 #include <visualization_msgs/MarkerArray.h>
 #include <atomic>
-#include <mutex>
 #include <condition_variable>
+#include <mutex>
 #include <thread>
 
 #include <boost/geometry.hpp>
@@ -45,9 +45,7 @@ class LambdaWorker {
  public:
   LambdaWorker() : finished_(false) {}
 
-  ~LambdaWorker() {
-    finish();
-  }
+  ~LambdaWorker() { finish(); }
 
   void finish() {
     {
@@ -125,7 +123,8 @@ class Detector {
       const std::vector<cartographer::mapping::SubmapId>& additional_submaps);
 
   bool CheckForOptimizationEvent();
-  void CheckOptimizationEventsPeriodicallyWhenIdle(const ::ros::WallTimerEvent&);
+  void CheckOptimizationEventsPeriodicallyWhenIdle(
+      const ::ros::WallTimerEvent&);
 
   std::vector<cartographer::mapping::SubmapId> GetIntersectingFinishedSubmaps(
       const cartographer::mapping::SubmapId& id_i);
@@ -172,7 +171,8 @@ class Detector {
                              submap_data.submap.get())
                              ->grid()),
           local_pose_inverse(submap_data.submap->local_pose().inverse()),
-          finished(grid_copy ? false : submap_data.submap->insertion_finished()) {
+          finished(grid_copy ? false
+                             : submap_data.submap->insertion_finished()) {
       SetGlobalPose(submap_data.pose);
       frontier_marker.header.frame_id = "map";
       frontier_marker.pose.orientation.w = 1.0;
@@ -220,7 +220,7 @@ class Detector {
       to_local_submap_position = to_global_position.inverse();
     }
 
-                       int ToFlatIndex(const Eigen::Array2i& cell_index) const {
+    int ToFlatIndex(const Eigen::Array2i& cell_index) const {
       return limits().cell_limits().num_x_cells * cell_index.y() +
              cell_index.x();
     }
@@ -300,7 +300,10 @@ class Detector {
     }
 
     std::map<cartographer::mapping::SubmapId,
-             std::unique_ptr<Detector::Submap>>& submaps() const { return submaps_; }
+             std::unique_ptr<Detector::Submap>>&
+    submaps() const {
+      return submaps_;
+    }
 
    private:
     using SubmapPair =

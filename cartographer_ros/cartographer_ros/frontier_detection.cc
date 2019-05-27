@@ -23,7 +23,8 @@ Detector::Detector(cartographer::mapping::PoseGraph* const pose_graph)
       submaps_(pose_graph_) {
   lambda_worker_.start();
   optimization_timer_ = ros::NodeHandle().createWallTimer(
-      ::ros::WallDuration(0.2), &Detector::CheckOptimizationEventsPeriodicallyWhenIdle, this);
+      ::ros::WallDuration(0.2),
+      &Detector::CheckOptimizationEventsPeriodicallyWhenIdle, this);
 }
 
 void Detector::NotifyEnd() {
@@ -302,12 +303,13 @@ void Detector::HandleSubmapUpdates(
   for (int i = 0; i < static_cast<int>(submap_ids.size()); i++) {
     (*submap_copies_ptr)[i] = std::make_pair(
         submap_data[i],
-        submap_data[i].submap->insertion_finished() ? nullptr :
-        absl::make_unique<cartographer::mapping::ProbabilityGrid>(
-            *static_cast<const cartographer::mapping::ProbabilityGrid*>(
-                static_cast<const cartographer::mapping::Submap2D*>(
-                    submap_data[i].submap.get())
-                    ->grid())));
+        submap_data[i].submap->insertion_finished()
+            ? nullptr
+            : absl::make_unique<cartographer::mapping::ProbabilityGrid>(
+                  *static_cast<const cartographer::mapping::ProbabilityGrid*>(
+                      static_cast<const cartographer::mapping::Submap2D*>(
+                          submap_data[i].submap.get())
+                          ->grid())));
   }
 
   lambda_worker_.PushIntoWorkQueue([this, submap_copies_ptr, submap_ids]() {
@@ -559,10 +561,9 @@ void Detector::HandleSubmapUpdates(
 
       for (const auto& active_submap : active_submaps_) {
         if (active_submap.trajectory_id != s_i.id.trajectory_id &&
-            bg::intersects(
-                bounding_box_info.last_global_box,
-                bounding_boxes_.at(active_submap).last_global_box) &&
-             std::find(additional_submaps_to_publish.begin(),
+            bg::intersects(bounding_box_info.last_global_box,
+                           bounding_boxes_.at(active_submap).last_global_box) &&
+            std::find(additional_submaps_to_publish.begin(),
                       additional_submaps_to_publish.end(),
                       active_submap) == additional_submaps_to_publish.end())
           additional_submaps_to_publish.push_back(active_submap);
