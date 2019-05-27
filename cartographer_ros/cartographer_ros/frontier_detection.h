@@ -113,7 +113,7 @@ class Detector {
 
   // Performs local frontier edge detection.
   void HandleSubmapUpdates(
-      const std::vector<cartographer::mapping::SubmapId>& submap_ids);
+      const std::vector<cartographer::mapping::SubmapId>& submap_id_pair);
 
   void NotifyEnd();
 

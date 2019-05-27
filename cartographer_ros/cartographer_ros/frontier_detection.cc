@@ -275,9 +275,11 @@ Detector::GetIntersectingFinishedSubmaps(
 }
 
 void Detector::HandleSubmapUpdates(
-    const std::vector<cartographer::mapping::SubmapId>& submap_ids) {
+    const std::vector<cartographer::mapping::SubmapId>& submap_id_pair) {
   bool do_not_skip = false;
   total_submap_updates++;
+  const std::vector<cartographer::mapping::SubmapId> submap_ids{
+      submap_id_pair.front()};
   std::vector<cartographer::mapping::PoseGraphInterface::SubmapData>
       submap_data(submap_ids.size());
   for (int i = 0; i < static_cast<int>(submap_ids.size()); i++) {
