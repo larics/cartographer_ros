@@ -363,11 +363,10 @@ cartographer::transform::Rigid3d ComputeLocalFrameFromLatLong(
     const double latitude, const double longitude, const double altitude) {
   const Eigen::Vector3d translation = LatLongAltToEcef(latitude, longitude, altitude);
   const Eigen::Quaterniond rotation =
-      Eigen::AngleAxisd(cartographer::common::DegToRad(latitude - 90.),
-                        Eigen::Vector3d::UnitY()) *
-      Eigen::AngleAxisd(cartographer::common::DegToRad(-longitude),
-                        Eigen::Vector3d::UnitZ());
-  return cartographer::transform::Rigid3d(rotation * -translation, rotation);
+      Eigen::AngleAxisd(cartographer::common::DegToRad(longitude), Eigen::Vector3d::UnitZ()) *
+      Eigen::Quaterniond(Eigen::AngleAxisd(M_PI * 0.5 - cartographer::common::DegToRad(latitude), Eigen::Vector3d::UnitY())) *
+      Eigen::Quaterniond(Eigen::AngleAxisd(M_PI * 0.5, Eigen::Vector3d::UnitZ()));
+  return cartographer::transform::Rigid3d(translation, rotation).inverse();
 }
 
 std::unique_ptr<nav_msgs::OccupancyGrid> CreateOccupancyGridMsg(
