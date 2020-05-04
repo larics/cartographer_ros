@@ -23,10 +23,12 @@
 #include "Eigen/Geometry"
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "cartographer/io/color.h"
 #include "cartographer/io/proto_stream.h"
 #include "cartographer/mapping/pose_graph.h"
 #include "cartographer_ros/msg_conversion.h"
+#include "cartographer_ros/time_conversion.h"
 #include "cartographer_ros_msgs/StatusCode.h"
 #include "cartographer_ros_msgs/StatusResponse.h"
 #include "nav_msgs/Path.h"
@@ -52,7 +54,7 @@ constexpr double kConstraintMarkerScale = 0.025;
 visualization_msgs::Marker CreateTrajectoryMarker(const int trajectory_id,
                                                   const std::string& frame_id) {
   visualization_msgs::Marker marker;
-  marker.ns = "Trajectory " + std::to_string(trajectory_id);
+  marker.ns = absl::StrCat("Trajectory ", trajectory_id);
   marker.id = 0;
   marker.type = visualization_msgs::Marker::LINE_STRIP;
   marker.header.stamp = ::ros::Time::now();
@@ -408,6 +410,29 @@ MapBuilderBridge::GetLocalTrajectoryData() {
 }
 
 extern ros::Publisher* pathpub;
+void MapBuilderBridge::HandleTrajectoryQuery(
+    cartographer_ros_msgs::TrajectoryQuery::Request& request,
+    cartographer_ros_msgs::TrajectoryQuery::Response& response) {
+  // This query is safe if the trajectory doesn't exist (returns 0 poses).
+  // However, we can filter unwanted states at the higher level in the node.
+  const auto node_poses = map_builder_->pose_graph()->GetTrajectoryNodePoses();
+  for (const auto& node_id_data :
+       node_poses.trajectory(request.trajectory_id)) {
+    if (!node_id_data.data.constant_pose_data.has_value()) {
+      continue;
+    }
+    geometry_msgs::PoseStamped pose_stamped;
+    pose_stamped.header.frame_id = node_options_.map_frame;
+    pose_stamped.header.stamp =
+        ToRos(node_id_data.data.constant_pose_data.value().time);
+    pose_stamped.pose = ToGeometryMsgPose(node_id_data.data.global_pose);
+    response.trajectory.push_back(pose_stamped);
+  }
+  response.status.code = cartographer_ros_msgs::StatusCode::OK;
+  response.status.message = absl::StrCat(
+      "Retrieved ", response.trajectory.size(),
+      " trajectory nodes from trajectory ", request.trajectory_id, ".");
+}
 
 visualization_msgs::MarkerArray MapBuilderBridge::GetTrajectoryNodeList() {
   visualization_msgs::MarkerArray trajectory_node_list;

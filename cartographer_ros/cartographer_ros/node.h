@@ -36,7 +36,6 @@
 #include "cartographer_ros_msgs/FinishTrajectory.h"
 #include "cartographer_ros_msgs/GetTrajectoryStates.h"
 #include "cartographer_ros_msgs/ReadMetrics.h"
-#include "cartographer_ros_msgs/SensorTopics.h"
 #include "cartographer_ros_msgs/StartTrajectory.h"
 #include "cartographer_ros_msgs/StatusResponse.h"
 #include "cartographer_ros_msgs/SubmapCloud.h"
@@ -137,6 +136,9 @@ class Node {
   bool HandleSubmapQuery(
       cartographer_ros_msgs::SubmapQuery::Request& request,
       cartographer_ros_msgs::SubmapQuery::Response& response);
+  bool HandleTrajectoryQuery(
+      ::cartographer_ros_msgs::TrajectoryQuery::Request& request,
+      ::cartographer_ros_msgs::TrajectoryQuery::Response& response);
   bool HandleStartTrajectory(
       cartographer_ros_msgs::StartTrajectory::Request& request,
       cartographer_ros_msgs::StartTrajectory::Response& response);
@@ -157,20 +159,15 @@ class Node {
 
   // Returns the set of SensorIds expected for a trajectory.
   // 'SensorId::id' is the expected ROS topic name.
-  std::set<::cartographer::mapping::TrajectoryBuilderInterface::SensorId>
-  ComputeExpectedSensorIds(
-      const TrajectoryOptions& options,
-      const cartographer_ros_msgs::SensorTopics& topics) const;
   bool HandleSubmapCloudQuery(
       cartographer_ros_msgs::SubmapCloudQuery::Request& request,
       cartographer_ros_msgs::SubmapCloudQuery::Response& response);
 
   void PublishSubmapPointCloud(const ::ros::WallTimerEvent& timer_event);
-  int AddTrajectory(const TrajectoryOptions& options,
-                    const cartographer_ros_msgs::SensorTopics& topics);
-  void LaunchSubscribers(const TrajectoryOptions& options,
-                         const cartographer_ros_msgs::SensorTopics& topics,
-                         int trajectory_id);
+  std::set<::cartographer::mapping::TrajectoryBuilderInterface::SensorId>
+    ComputeExpectedSensorIds(const TrajectoryOptions& options) const;
+  int AddTrajectory(const TrajectoryOptions& options);
+  void LaunchSubscribers(const TrajectoryOptions& options, int trajectory_id);
   void PublishSubmapList(const ::ros::WallTimerEvent& timer_event);
   void AddExtrapolator(int trajectory_id, const TrajectoryOptions& options);
   void AddSensorSamplers(int trajectory_id, const TrajectoryOptions& options);
@@ -179,17 +176,23 @@ class Node {
   void PublishLandmarkPosesList(const ::ros::WallTimerEvent& timer_event);
   void PublishConstraintList(const ::ros::WallTimerEvent& timer_event);
   bool ValidateTrajectoryOptions(const TrajectoryOptions& options);
-  bool ValidateTopicNames(const ::cartographer_ros_msgs::SensorTopics& topics,
-                          const TrajectoryOptions& options);
+  bool ValidateTopicNames(const TrajectoryOptions& options);
   cartographer_ros_msgs::StatusResponse FinishTrajectoryUnderLock(
       int trajectory_id) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void MaybeWarnAboutTopicMismatch(const ::ros::WallTimerEvent&);
 
+  // Helper function for service handlers that need to check trajectory states.
+  cartographer_ros_msgs::StatusResponse TrajectoryStateToStatus(
+      int trajectory_id,
+      const std::set<
+          cartographer::mapping::PoseGraphInterface::TrajectoryState>&
+          valid_states);
   const NodeOptions node_options_;
 
   tf2_ros::TransformBroadcaster tf_broadcaster_;
 
   absl::Mutex mutex_;
+  std::unique_ptr<cartographer_ros::metrics::FamilyFactory> metrics_registry_;
   MapBuilderBridge map_builder_bridge_ GUARDED_BY(mutex_);
 
   ::ros::NodeHandle node_handle_;
@@ -237,8 +240,6 @@ class Node {
   // simulation time is standing still. This prevents overflowing the transform
   // listener buffer by publishing the same transforms over and over again.
   ::ros::Timer publish_local_trajectory_data_timer_;
-
-  std::unique_ptr<cartographer_ros::metrics::FamilyFactory> metrics_registry_;
 };
 
 }  // namespace cartographer_ros
