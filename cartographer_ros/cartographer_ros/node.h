@@ -43,7 +43,6 @@
 #include "cartographer_ros_msgs/SubmapEntry.h"
 #include "cartographer_ros_msgs/SubmapList.h"
 #include "cartographer_ros_msgs/SubmapQuery.h"
-#include "cartographer_ros_msgs/TrajectoryOptions.h"
 #include "cartographer_ros_msgs/WriteEcefTrajectory.h"
 #include "cartographer_ros_msgs/WriteState.h"
 #include "nav_msgs/Odometry.h"
