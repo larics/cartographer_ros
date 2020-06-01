@@ -679,6 +679,8 @@ bool Node::HandleStartTrajectory(
     }
 
     // Check if the requested trajectory for the relative initial pose exists.
+    // No need to check for existence of virtual trajectory -1,
+    // which is fixed in the map origin frame
     if (request.relative_to_trajectory_id != -1) {
         response.status = TrajectoryStateToStatus(
                 request.relative_to_trajectory_id,
