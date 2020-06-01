@@ -679,14 +679,18 @@ bool Node::HandleStartTrajectory(
     }
 
     // Check if the requested trajectory for the relative initial pose exists.
-    response.status = TrajectoryStateToStatus(
-        request.relative_to_trajectory_id,
-        {TrajectoryState::ACTIVE, TrajectoryState::FROZEN,
-         TrajectoryState::FINISHED} /* valid states */);
-    if (response.status.code != cartographer_ros_msgs::StatusCode::OK) {
-      LOG(ERROR) << "Can't start a trajectory with initial pose: "
-                 << response.status.message;
-      return true;
+    // No need to check for existence of virtual trajectory -1,
+    // which is fixed in the map origin frame
+    if (request.relative_to_trajectory_id != -1) {
+        response.status = TrajectoryStateToStatus(
+                request.relative_to_trajectory_id,
+                {TrajectoryState::ACTIVE, TrajectoryState::FROZEN,
+                 TrajectoryState::FINISHED} /* valid states */);
+        if (response.status.code != cartographer_ros_msgs::StatusCode::OK) {
+            LOG(ERROR) << "Can't start a trajectory with initial pose: "
+                       << response.status.message;
+            return true;
+        }
     }
 
     ::cartographer::mapping::proto::InitialTrajectoryPose

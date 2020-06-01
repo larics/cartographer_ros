@@ -158,13 +158,13 @@ class Node {
 
   // Returns the set of SensorIds expected for a trajectory.
   // 'SensorId::id' is the expected ROS topic name.
+  std::set<::cartographer::mapping::TrajectoryBuilderInterface::SensorId>
+  ComputeExpectedSensorIds(const TrajectoryOptions& options) const;
   bool HandleSubmapCloudQuery(
       cartographer_ros_msgs::SubmapCloudQuery::Request& request,
       cartographer_ros_msgs::SubmapCloudQuery::Response& response);
 
   void PublishSubmapPointCloud(const ::ros::WallTimerEvent& timer_event);
-  std::set<::cartographer::mapping::TrajectoryBuilderInterface::SensorId>
-    ComputeExpectedSensorIds(const TrajectoryOptions& options) const;
   int AddTrajectory(const TrajectoryOptions& options);
   void LaunchSubscribers(const TrajectoryOptions& options, int trajectory_id);
   void PublishSubmapList(const ::ros::WallTimerEvent& timer_event);
