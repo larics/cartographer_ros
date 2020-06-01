@@ -409,7 +409,6 @@ MapBuilderBridge::GetLocalTrajectoryData() {
   return local_trajectory_data;
 }
 
-extern ros::Publisher* pathpub;
 void MapBuilderBridge::HandleTrajectoryQuery(
     cartographer_ros_msgs::TrajectoryQuery::Request& request,
     cartographer_ros_msgs::TrajectoryQuery::Response& response) {
@@ -433,6 +432,8 @@ void MapBuilderBridge::HandleTrajectoryQuery(
       "Retrieved ", response.trajectory.size(),
       " trajectory nodes from trajectory ", request.trajectory_id, ".");
 }
+
+extern ros::Publisher* pathpub;
 
 visualization_msgs::MarkerArray MapBuilderBridge::GetTrajectoryNodeList() {
   visualization_msgs::MarkerArray trajectory_node_list;
