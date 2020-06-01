@@ -34,13 +34,11 @@ add_message_files(
     MetricFamily.msg
     MetricLabel.msg
     Metric.msg
-    SensorTopics.msg
     StatusCode.msg
     StatusResponse.msg
     SubmapEntry.msg
     SubmapList.msg
     SubmapTexture.msg
-    TrajectoryOptions.msg
     TrajectoryStates.msg
 )
 
@@ -54,6 +52,7 @@ add_service_files(
     ReadMetrics.srv
     StartTrajectory.srv
     SubmapQuery.srv
+    TrajectoryQuery.srv
     WriteState.srv
     WriteEcefTrajectory.srv
 )
