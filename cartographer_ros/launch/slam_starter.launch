@@ -1,0 +1,10 @@
+<launch>
+  <arg name="configuration_directory" default="$(find erl_drone)/config"/>
+  <arg name="configuration_basename" default="second_tuning.lua"/>
+
+  <node name="SLAM_starter" pkg="cartographer_ros" type="slam_starter.py"
+    args="$(arg configuration_directory) $(arg configuration_basename)">
+    <remap from="odom" to="/red/mavros/global_position/local"/>
+  </node>
+
+</launch>
