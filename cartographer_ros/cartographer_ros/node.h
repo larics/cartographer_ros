@@ -167,6 +167,7 @@ class Node {
   void PublishSubmapPointCloud(const ::ros::WallTimerEvent& timer_event);
   int AddTrajectory(const TrajectoryOptions& options);
   void LaunchSubscribers(const TrajectoryOptions& options, int trajectory_id);
+  void LaunchPublisher(const TrajectoryOptions& options, int trajectory_id);
   void PublishSubmapList(const ::ros::WallTimerEvent& timer_event);
   void AddExtrapolator(int trajectory_id, const TrajectoryOptions& options);
   void AddSensorSamplers(int trajectory_id, const TrajectoryOptions& options);
@@ -227,6 +228,7 @@ class Node {
   std::map<int, ::cartographer::mapping::PoseExtrapolator> extrapolators_;
   std::unordered_map<int, TrajectorySensorSamplers> sensor_samplers_;
   std::unordered_map<int, std::vector<Subscriber>> subscribers_;
+  std::vector<::ros::Publisher> velocity_publishers_;
   std::unordered_set<std::string> subscribed_topics_;
   std::unordered_set<int> trajectories_scheduled_for_finish_;
 

@@ -255,7 +255,7 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
   absl::MutexLock lock(&mutex_);
   for (const auto& entry : map_builder_bridge_.GetLocalTrajectoryData()) {
     const auto& trajectory_data = entry.second;
-
+    
     static int previous_pgo_id = 0;
     static Rigid3d interpolation_start_pose = Rigid3d::Identity();
     static Rigid3d previous_pose = Rigid3d::Identity();
@@ -380,6 +380,14 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
       }
     }
   }
+
+  nav_msgs::Odometry velocity_odometry_msg;
+  velocity_odometry_msg.header.stamp = ros::Time::now();
+  const auto linear_velocity_from_poses = extrapolators_.at(0).getLinearVelocityFromPoses();
+  velocity_odometry_msg.twist.twist.linear.x = linear_velocity_from_poses.x();
+  velocity_odometry_msg.twist.twist.linear.y = linear_velocity_from_poses.y();
+  velocity_odometry_msg.twist.twist.linear.z = linear_velocity_from_poses.z();
+  velocity_publishers_.front().publish(velocity_odometry_msg);  
 }
 
 ros::Publisher* pathpub = nullptr;
@@ -505,6 +513,7 @@ int Node::AddTrajectory(const TrajectoryOptions& options) {
   AddExtrapolator(trajectory_id, options);
   AddSensorSamplers(trajectory_id, options);
   LaunchSubscribers(options, trajectory_id);
+  LaunchPublisher(options, trajectory_id);
   wall_timers_.push_back(node_handle_.createWallTimer(
       ::ros::WallDuration(kTopicMismatchCheckDelaySec),
       &Node::MaybeWarnAboutTopicMismatch, this, /*oneshot=*/true));
@@ -512,6 +521,11 @@ int Node::AddTrajectory(const TrajectoryOptions& options) {
     subscribed_topics_.insert(sensor_id.id);
   }
   return trajectory_id;
+}
+
+void Node::LaunchPublisher(const TrajectoryOptions& options, int trajectory_id)
+{
+  velocity_publishers_.push_back(node_handle_.advertise<nav_msgs::Odometry>("linear_velocity", 1));
 }
 
 void Node::LaunchSubscribers(const TrajectoryOptions& options,
