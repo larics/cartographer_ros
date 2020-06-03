@@ -381,13 +381,17 @@ void Node::PublishLocalTrajectoryData(const ::ros::TimerEvent& timer_event) {
     }
   }
 
-  nav_msgs::Odometry velocity_odometry_msg;
-  velocity_odometry_msg.header.stamp = ros::Time::now();
-  const auto linear_velocity_from_poses = extrapolators_.at(0).getLinearVelocityFromPoses();
-  velocity_odometry_msg.twist.twist.linear.x = linear_velocity_from_poses.x();
-  velocity_odometry_msg.twist.twist.linear.y = linear_velocity_from_poses.y();
-  velocity_odometry_msg.twist.twist.linear.z = linear_velocity_from_poses.z();
-  velocity_publishers_.front().publish(velocity_odometry_msg);  
+  // Publish the most recent extrapolator's linear_velocity_from_poses
+
+  if (extrapolators_.size()){
+    nav_msgs::Odometry velocity_odometry_msg;
+    velocity_odometry_msg.header.stamp = ros::Time::now();
+    const auto linear_velocity_from_poses = extrapolators_.at(extrapolators_.size()-1).getLinearVelocityFromPoses();
+    velocity_odometry_msg.twist.twist.linear.x = linear_velocity_from_poses.x();
+    velocity_odometry_msg.twist.twist.linear.y = linear_velocity_from_poses.y();
+    velocity_odometry_msg.twist.twist.linear.z = linear_velocity_from_poses.z();
+    velocity_publishers_.front().publish(velocity_odometry_msg);
+  }
 }
 
 ros::Publisher* pathpub = nullptr;
