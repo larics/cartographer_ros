@@ -36,8 +36,9 @@ class SlamStarter:
                 data.pose.pose.orientation.z]
 
         yaw = math.atan2( 2 * (q[0]*q[3] + q[1]*q[2]), 1 - 2 * (q[2]**2 + q[3]**2))
-        new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, yaw))
+        # new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, yaw))
 
+        new_orientation = data.pose.pose.orientation
 
         req = StartTrajectoryRequest()
         req.configuration_directory = self.configuration_directory
