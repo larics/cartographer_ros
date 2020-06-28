@@ -119,6 +119,11 @@ void SensorBridge::HandleNavSatFixMessage(
     ecef_to_local_fix_pub->publish(msg);
   }
 
+  std::array<double, 9> position_covariance;
+  for (std::size_t i = 0; i < position_covariance.size(); i++) {
+    position_covariance[i] = msg->position_covariance.at(i);
+  }
+
   trajectory_builder_->AddSensorData(
       sensor_id,
       carto::sensor::LandmarkData{
@@ -131,7 +136,8 @@ void SensorBridge::HandleNavSatFixMessage(
                                                         msg->longitude,
                                                         msg->altitude)),
                   nav_sat_translation_weight_, 0. /* rotation_weight */,
-                  false /* observed_from_tracking */}}});
+                  false /* observed_from_tracking */,
+                  position_covariance}}});
 }
 
 void SensorBridge::HandleLandmarkMessage(
