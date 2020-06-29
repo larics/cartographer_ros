@@ -48,11 +48,13 @@ SensorBridge::SensorBridge(
     const double lookup_transform_timeout_sec, tf2_ros::Buffer* const tf_buffer,
     carto::mapping::TrajectoryBuilderInterface* const trajectory_builder,
     const double nav_sat_translation_weight,
+    double nav_sat_inverse_covariance_weight,
     const sensor_msgs::NavSatFix::ConstPtr& predefined_enu_frame_position)
     : num_subdivisions_per_laser_scan_(num_subdivisions_per_laser_scan),
       tf_bridge_(tracking_frame, lookup_transform_timeout_sec, tf_buffer),
       trajectory_builder_(trajectory_builder),
       nav_sat_translation_weight_(nav_sat_translation_weight),
+      nav_sat_inverse_covariance_weight_(nav_sat_inverse_covariance_weight),
       predefined_enu_frame_position_(predefined_enu_frame_position) {}
 
 std::unique_ptr<carto::sensor::OdometryData> SensorBridge::ToOdometryData(
