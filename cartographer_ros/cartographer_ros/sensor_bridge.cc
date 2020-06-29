@@ -121,9 +121,15 @@ void SensorBridge::HandleNavSatFixMessage(
     ecef_to_local_fix_pub->publish(msg);
   }
 
-  std::array<double, 9> position_covariance;
-  for (std::size_t i = 0; i < position_covariance.size(); i++) {
-    position_covariance[i] = msg->position_covariance.at(i);
+  std::array<double, 9> inverse_covariance;
+  for (std::size_t i = 0; i < inverse_covariance.size(); i++) {
+    if (msg->position_covariance.at(i) < 1e-5) {
+      inverse_covariance[i] = 0;
+    } else if (nav_sat_inverse_covariance_weight_ < 1e-5) {
+      inverse_covariance[i] = 1;
+    } else {
+      inverse_covariance[i] = nav_sat_inverse_covariance_weight_ / msg->position_covariance.at(i);
+    }
   }
 
   trajectory_builder_->AddSensorData(
@@ -139,7 +145,7 @@ void SensorBridge::HandleNavSatFixMessage(
                                                         msg->altitude)),
                   nav_sat_translation_weight_, 0. /* rotation_weight */,
                   false /* observed_from_tracking */,
-                  position_covariance}}});
+                  inverse_covariance}}});
 }
 
 void SensorBridge::HandleLandmarkMessage(
