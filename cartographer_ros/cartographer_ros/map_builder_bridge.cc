@@ -156,10 +156,13 @@ sensor_msgs::PointCloud2 CreateCloudFromHybridGrid(
 MapBuilderBridge::MapBuilderBridge(
     const NodeOptions& node_options,
     std::unique_ptr<cartographer::mapping::MapBuilderInterface> map_builder,
-    tf2_ros::Buffer* const tf_buffer)
+    tf2_ros::Buffer* const tf_buffer,
+    ::cartographer::mapping::PoseGraphInterface::GlobalSlamOptimizationCallback node_global_optimization_callback)
     : node_options_(node_options),
       map_builder_(std::move(map_builder)),
-      tf_buffer_(tf_buffer) {}
+      tf_buffer_(tf_buffer){
+        map_builder_ -> SetGlobalSlamResultCallback(node_global_optimization_callback);
+      }
 
 void MapBuilderBridge::LoadState(const std::string& state_filename,
                                  bool load_frozen_state) {

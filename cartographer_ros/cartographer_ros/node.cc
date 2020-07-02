@@ -28,6 +28,7 @@
 #include "cartographer/common/lua_parameter_dictionary.h"
 #include "cartographer/common/port.h"
 #include "cartographer/common/time.h"
+#include "cartographer/mapping/id.h"
 #include "cartographer/mapping/pose_graph_interface.h"
 #include "cartographer/mapping/proto/submap_visualization.pb.h"
 #include "cartographer/metrics/register.h"
@@ -44,6 +45,7 @@
 #include "glog/logging.h"
 #include "nav_msgs/Odometry.h"
 #include "nav_msgs/Path.h"
+#include "std_msgs/Int16.h"
 #include "ros/serialization.h"
 #include "sensor_msgs/PointCloud2.h"
 #include "tf2_eigen/tf2_eigen.h"
@@ -102,7 +104,16 @@ Node::Node(
     std::unique_ptr<cartographer::mapping::MapBuilderInterface> map_builder,
     tf2_ros::Buffer* const tf_buffer, const bool collect_metrics)
     : node_options_(node_options),
-      map_builder_bridge_(node_options_, std::move(map_builder), tf_buffer) {
+      map_builder_bridge_(node_options_, std::move(map_builder), tf_buffer, [&](const std::map<int, ::cartographer::mapping::SubmapId>& submaps, 
+    const std::map<int, ::cartographer::mapping::NodeId>& nodes){
+        ::std_msgs::Int16 msg;
+        msg.data = 0;
+        global_optimization_status_publisher_.publish(msg);
+        msg.data = 10;
+        global_optimization_status_publisher_.publish(msg);
+        msg.data = 0;
+        global_optimization_status_publisher_.publish(msg);
+      }){
   absl::MutexLock lock(&mutex_);
   if (collect_metrics) {
     metrics_registry_ = absl::make_unique<metrics::FamilyFactory>();
@@ -123,6 +134,8 @@ Node::Node(
           kConstraintListTopic, kLatestOnlyPublisherQueueSize);
   submap_cloud_publisher_ =
       node_handle_.advertise<::sensor_msgs::PointCloud2>("submap_cloud", 1000);
+  global_optimization_status_publisher_ =
+      node_handle_.advertise<::std_msgs::Int16>("global_optimization_status", 3);
 
   service_servers_.push_back(node_handle_.advertiseService(
       kSubmapQueryServiceName, &Node::HandleSubmapQuery, this));

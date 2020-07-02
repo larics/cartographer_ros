@@ -72,7 +72,8 @@ class MapBuilderBridge {
   MapBuilderBridge(
       const NodeOptions& node_options,
       std::unique_ptr<cartographer::mapping::MapBuilderInterface> map_builder,
-      tf2_ros::Buffer* tf_buffer);
+      tf2_ros::Buffer* tf_buffer,
+      ::cartographer::mapping::PoseGraphInterface::GlobalSlamOptimizationCallback node_global_optimization_callback);
 
   MapBuilderBridge(const MapBuilderBridge&) = delete;
   MapBuilderBridge& operator=(const MapBuilderBridge&) = delete;
