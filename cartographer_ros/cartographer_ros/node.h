@@ -26,6 +26,7 @@
 
 #include "absl/synchronization/mutex.h"
 #include "cartographer/common/fixed_ratio_sampler.h"
+#include "cartographer/mapping/id.h"
 #include "cartographer/mapping/map_builder_interface.h"
 #include "cartographer/mapping/pose_extrapolator.h"
 #include "cartographer_ros/map_builder_bridge.h"
@@ -200,6 +201,7 @@ class Node {
   ::ros::Publisher landmark_poses_list_publisher_;
   ::ros::Publisher constraint_list_publisher_;
   ::ros::Publisher submap_cloud_publisher_;
+  ::ros::Publisher global_optimization_status_publisher_;
   // These ros::ServiceServers need to live for the lifetime of the node.
   std::vector<::ros::ServiceServer> service_servers_;
   ::ros::Publisher scan_matched_point_cloud_publisher_;
