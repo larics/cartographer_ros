@@ -323,9 +323,9 @@ bool MapBuilderBridge::HandleSubmapCloudQuery(
 
 
 bool MapBuilderBridge::CreateLastSubmapPointCloud(sensor_msgs::PointCloud2& cloud) {
-  const double min_probability = 0.5;
+  const double min_probability = 0.7;
   const int trajectory_id = 0;
-  bool high_resolution = true;
+  bool high_resolution = false;
   cartographer::mapping::SubmapId submap_id{0, 0};
   auto all_submap_data = map_builder_->pose_graph()->GetAllSubmapData();
   
