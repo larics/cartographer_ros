@@ -104,7 +104,7 @@ Node::Node(
     std::unique_ptr<cartographer::mapping::MapBuilderInterface> map_builder,
     tf2_ros::Buffer* const tf_buffer, const bool collect_metrics)
     : node_options_(node_options),
-      map_builder_bridge_(node_options_, std::move(map_builder), tf_buffer, [&](const std::map<int, ::cartographer::mapping::SubmapId>& submaps, 
+      map_builder_bridge_(node_options_, std::move(map_builder), tf_buffer, [&](const std::map<int, ::cartographer::mapping::SubmapId>& submaps,
     const std::map<int, ::cartographer::mapping::NodeId>& nodes){
         ::std_msgs::Int16 msg;
         msg.data = 0;
@@ -588,6 +588,13 @@ void Node::LaunchSubscribers(const TrajectoryOptions& options,
              &node_handle_, this),
          kLandmarkTopic});
   }
+  if (options.use_position_sensor) {
+    subscribers_[trajectory_id].push_back(
+        {SubscribeWithHandler<geometry_msgs::TransformStamped>(
+             &Node::HandleTransformMessage, trajectory_id, kTransformTopic,
+             &node_handle_, this),
+         kTransformTopic});
+  }
 }
 
 bool Node::ValidateTrajectoryOptions(const TrajectoryOptions& options) {
@@ -896,6 +903,18 @@ void Node::HandleOdometryMessage(const int trajectory_id,
   }
   sensor_bridge_ptr->HandleOdometryMessage(sensor_id, msg);
 }
+
+void Node::HandleTransformMessage(const int trajectory_id,
+                                  const std::string& sensor_id,
+                                  const geometry_msgs::TransformStamped::ConstPtr& msg) { // msg type
+  absl::MutexLock lock(&mutex_);
+  if (!sensor_samplers_.at(trajectory_id).fixed_frame_pose_sampler.Pulse()) {
+    return;
+  }
+  map_builder_bridge_.sensor_bridge(trajectory_id)
+      ->HandleTransformMessage(sensor_id, msg);
+}
+
 
 void Node::HandleNavSatFixMessage(const int trajectory_id,
                                   const std::string& sensor_id,
