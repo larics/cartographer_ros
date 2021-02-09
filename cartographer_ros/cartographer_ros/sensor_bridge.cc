@@ -48,12 +48,14 @@ SensorBridge::SensorBridge(
     const double lookup_transform_timeout_sec, tf2_ros::Buffer* const tf_buffer,
     carto::mapping::TrajectoryBuilderInterface* const trajectory_builder,
     const double nav_sat_translation_weight,
+    bool use_inverse_covariance_weight,
     double nav_sat_inverse_covariance_weight,
     const sensor_msgs::NavSatFix::ConstPtr& predefined_enu_frame_position)
     : num_subdivisions_per_laser_scan_(num_subdivisions_per_laser_scan),
       tf_bridge_(tracking_frame, lookup_transform_timeout_sec, tf_buffer),
       trajectory_builder_(trajectory_builder),
       nav_sat_translation_weight_(nav_sat_translation_weight),
+      use_inverse_covariance_weight_(use_inverse_covariance_weight),
       nav_sat_inverse_covariance_weight_(nav_sat_inverse_covariance_weight),
       predefined_enu_frame_position_(predefined_enu_frame_position) {}
 
@@ -123,11 +125,14 @@ void SensorBridge::HandleNavSatFixMessage(
 
   std::array<double, 9> inverse_covariance;
   for (std::size_t i = 0; i < inverse_covariance.size(); i++) {
-    if (msg->position_covariance.at(i) < 1e-5) {
+    if (!use_inverse_covariance_weight_) {
+      // When using inverse covariance weight is disabled
       inverse_covariance[i] = 0;
-    } else if (nav_sat_inverse_covariance_weight_ < 1e-5) {
+    } else if (msg->position_covariance.at(i) < 1e-5) {
+      // Avoid division by zero when calculating inverse covariance
       inverse_covariance[i] = 1;
     } else {
+      // Calculate weighted inverse covariance
       inverse_covariance[i] = nav_sat_inverse_covariance_weight_ / msg->position_covariance.at(i);
     }
   }
