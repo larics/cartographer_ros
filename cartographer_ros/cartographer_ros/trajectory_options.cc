@@ -56,8 +56,8 @@ TrajectoryOptions CreateTrajectoryOptions(
   options.use_nav_sat = lua_parameter_dictionary->GetBool("use_nav_sat");
   options.nav_sat_translation_weight =
       lua_parameter_dictionary->GetDouble("nav_sat_translation_weight");
-  options.use_inverse_covariance_weight =
-      lua_parameter_dictionary->GetBool("use_inverse_covariance_weight");
+  options.nav_sat_inverse_covariance_bias =
+      lua_parameter_dictionary->GetDouble("nav_sat_inverse_covariance_bias");
   options.nav_sat_inverse_covariance_weight =
       lua_parameter_dictionary->GetDouble("nav_sat_inverse_covariance_weight");
   options.use_landmarks = lua_parameter_dictionary->GetBool("use_landmarks");

@@ -47,7 +47,7 @@ class SensorBridge {
       double lookup_transform_timeout_sec, tf2_ros::Buffer* tf_buffer,
       ::cartographer::mapping::TrajectoryBuilderInterface* trajectory_builder,
       double nav_sat_translation_weight,
-      bool use_inverse_covariance_weight,
+      double nav_sat_inverse_covariance_bias,
       double nav_sat_inverse_covariance_weight,
       const sensor_msgs::NavSatFix::ConstPtr& predefined_enu_frame_position);
 
@@ -103,7 +103,7 @@ class SensorBridge {
   static absl::optional<::cartographer::transform::Rigid3d>
       ecef_to_local_frame_;
   const double nav_sat_translation_weight_;
-  const bool use_inverse_covariance_weight_;
+  const double nav_sat_inverse_covariance_bias_;
   const double nav_sat_inverse_covariance_weight_;
   // nullptr: use first NavSatFix to place ENU frame
   const sensor_msgs::NavSatFix::ConstPtr predefined_enu_frame_position_;
