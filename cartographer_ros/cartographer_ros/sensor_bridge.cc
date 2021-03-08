@@ -48,12 +48,14 @@ SensorBridge::SensorBridge(
     const double lookup_transform_timeout_sec, tf2_ros::Buffer* const tf_buffer,
     carto::mapping::TrajectoryBuilderInterface* const trajectory_builder,
     const double nav_sat_translation_weight,
+    double nav_sat_inverse_covariance_bias,
     double nav_sat_inverse_covariance_weight,
     const sensor_msgs::NavSatFix::ConstPtr& predefined_enu_frame_position)
     : num_subdivisions_per_laser_scan_(num_subdivisions_per_laser_scan),
       tf_bridge_(tracking_frame, lookup_transform_timeout_sec, tf_buffer),
       trajectory_builder_(trajectory_builder),
       nav_sat_translation_weight_(nav_sat_translation_weight),
+      nav_sat_inverse_covariance_bias_(nav_sat_inverse_covariance_bias),
       nav_sat_inverse_covariance_weight_(nav_sat_inverse_covariance_weight),
       predefined_enu_frame_position_(predefined_enu_frame_position) {}
 
@@ -124,11 +126,13 @@ void SensorBridge::HandleNavSatFixMessage(
   std::array<double, 9> inverse_covariance;
   for (std::size_t i = 0; i < inverse_covariance.size(); i++) {
     if (msg->position_covariance.at(i) < 1e-5) {
-      inverse_covariance[i] = 0;
-    } else if (nav_sat_inverse_covariance_weight_ < 1e-5) {
-      inverse_covariance[i] = 1;
+      // Avoid division by zero when calculating inverse covariance
+      inverse_covariance[i] = nav_sat_inverse_covariance_bias_;
     } else {
-      inverse_covariance[i] = nav_sat_inverse_covariance_weight_ / msg->position_covariance.at(i);
+      // Calculate weighted inverse covariance
+      inverse_covariance[i] =
+          nav_sat_inverse_covariance_bias_ +
+          nav_sat_inverse_covariance_weight_ / msg->position_covariance.at(i);
     }
   }
 
@@ -144,8 +148,7 @@ void SensorBridge::HandleNavSatFixMessage(
                                                         msg->longitude,
                                                         msg->altitude)),
                   nav_sat_translation_weight_, 0. /* rotation_weight */,
-                  false /* observed_from_tracking */,
-                  inverse_covariance}}});
+                  false /* observed_from_tracking */, inverse_covariance}}});
 }
 
 void SensorBridge::HandleLandmarkMessage(
