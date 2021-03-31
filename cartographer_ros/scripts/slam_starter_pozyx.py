@@ -38,7 +38,7 @@ class SlamStarter:
                 data.transform.rotation.z]
 
         # yaw = math.atan2( 2 * (q[0]*q[3] + q[1]*q[2]), 1 - 2 * (q[2]**2 + q[3]**2))
-        yaw = -0.8*math.pi/2 # 1*math.pi/2 #  
+        yaw = 1*math.pi/2 #   -0.8*math.pi/2 # 
         roll= 0 # math.pi
         new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(roll, 0, yaw))
 

@@ -92,10 +92,10 @@ void SensorBridge::HandleTransformMessage(
     const std::string& sensor_id, const geometry_msgs::TransformStamped::ConstPtr& msg) {
 
   // POZYX messages don't have covariance info. Default to I.
-  std::array<double, 9> inverse_covariance{{1,0,0,0,1,0,0,0,1}};
+  // POZYX z is bad so set its inverse covariance to 0. TODO: separate z translation weight
+  std::array<double, 9> inverse_covariance{{1,0,0,0,1,0,0,0, 0 }};
 
-  // auto translation = Eigen::Vector3d(msg->transform.translation.x, msg->transform.translation.y, msg->transform.translation.z);
-  auto translation = Eigen::Vector3d(msg->transform.translation.x, msg->transform.translation.y, 0);
+  auto translation = Eigen::Vector3d(msg->transform.translation.x, msg->transform.translation.y, msg->transform.translation.z);
 
   trajectory_builder_->AddSensorData(
       sensor_id,
