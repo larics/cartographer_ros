@@ -136,9 +136,7 @@ void SensorBridge::HandleNavSatFixMessage(
     }
   }
 
-  trajectory_builder_->AddSensorData(
-      sensor_id,
-      carto::sensor::LandmarkData{
+  const carto::sensor::LandmarkData landmark_data{
           cartographer_ros::FromRos(msg->header.stamp),
           std::vector<carto::sensor::LandmarkObservation>{
               carto::sensor::LandmarkObservation{
@@ -148,7 +146,18 @@ void SensorBridge::HandleNavSatFixMessage(
                                                         msg->longitude,
                                                         msg->altitude)),
                   nav_sat_translation_weight_, 0. /* rotation_weight */,
-                  false /* observed_from_tracking */, inverse_covariance}}});
+                  false /* observed_from_tracking */, inverse_covariance}}};
+
+
+  if (false) {
+    static std::ofstream out("/tmp/gps.log");
+    const auto& tr = landmark_data.landmark_observations[0].landmark_to_tracking_transform.translation();
+    out << msg->header.stamp.sec << " " << msg->header.stamp.nsec << " "
+        << msg->header.stamp.toSec()
+        << " " << tr.x() << " " << tr.y() << " " << tr.z() << std::endl;
+  }
+
+  trajectory_builder_->AddSensorData(sensor_id, landmark_data);
 }
 
 void SensorBridge::HandleLandmarkMessage(
