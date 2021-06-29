@@ -170,20 +170,20 @@ TEST(MsgConversion, LatLongAltToEcef) {
 
 TEST(MsgConversion, ComputeLocalFrameFromLatLong) {
   cartographer::transform::Rigid3d north_pole =
-      ComputeLocalFrameFromLatLong(90., 0.);
+      ComputeLocalFrameFromLatLong(90., 0., 0);
   EXPECT_TRUE((north_pole * LatLongAltToEcef(90., 0., 1.))
                   .isApprox(Eigen::Vector3d::UnitZ()));
   cartographer::transform::Rigid3d south_pole =
-      ComputeLocalFrameFromLatLong(-90., 0.);
+      ComputeLocalFrameFromLatLong(-90., 0., 0);
   EXPECT_TRUE((south_pole * LatLongAltToEcef(-90., 0., 1.))
                   .isApprox(Eigen::Vector3d::UnitZ()));
   cartographer::transform::Rigid3d prime_meridian_equator =
-      ComputeLocalFrameFromLatLong(0., 0.);
+      ComputeLocalFrameFromLatLong(0., 0., 0);
   EXPECT_TRUE((prime_meridian_equator * LatLongAltToEcef(0., 0., 1.))
                   .isApprox(Eigen::Vector3d::UnitZ()))
       << prime_meridian_equator * LatLongAltToEcef(0., 0., 1.);
   cartographer::transform::Rigid3d meridian_90_equator =
-      ComputeLocalFrameFromLatLong(0., 90.);
+      ComputeLocalFrameFromLatLong(0., 90., 0);
   EXPECT_TRUE((meridian_90_equator * LatLongAltToEcef(0., 90., 1.))
                   .isApprox(Eigen::Vector3d::UnitZ()))
       << meridian_90_equator * LatLongAltToEcef(0., 90., 1.);
@@ -198,7 +198,7 @@ TEST(MsgConversion, ComputeLocalFrameFromLatLong) {
     const double longitude = long_distribution(rng);
     const double altitude = alt_distribution(rng);
     cartographer::transform::Rigid3d transform_to_local_frame =
-        ComputeLocalFrameFromLatLong(latitude, longitude);
+        ComputeLocalFrameFromLatLong(latitude, longitude, 0);
     EXPECT_TRUE((transform_to_local_frame *
                  LatLongAltToEcef(latitude, longitude, altitude))
                     .isApprox(altitude * Eigen::Vector3d::UnitZ(), kEps))
@@ -211,3 +211,13 @@ TEST(MsgConversion, ComputeLocalFrameFromLatLong) {
 
 }  // namespace
 }  // namespace cartographer_ros
+
+
+int main(int argc, char** argv) {
+
+  srand(time(NULL));
+
+  testing::InitGoogleTest(&argc, argv);
+
+  return RUN_ALL_TESTS();
+}
