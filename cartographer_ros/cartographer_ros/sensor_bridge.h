@@ -49,6 +49,7 @@ class SensorBridge {
       double nav_sat_translation_weight,
       double nav_sat_inverse_covariance_bias,
       double nav_sat_inverse_covariance_weight,
+      double position_translation_weight,
       const sensor_msgs::NavSatFix::ConstPtr& predefined_enu_frame_position);
 
   SensorBridge(const SensorBridge&) = delete;
@@ -75,6 +76,8 @@ class SensorBridge {
       const sensor_msgs::MultiEchoLaserScan::ConstPtr& msg);
   void HandlePointCloud2Message(const std::string& sensor_id,
                                 const sensor_msgs::PointCloud2::ConstPtr& msg);
+  void HandleTransformMessage(const std::string& sensor_id,
+                              const geometry_msgs::TransformStamped::ConstPtr& msg);
 
   const TfBridge& tf_bridge() const;
 
@@ -105,6 +108,7 @@ class SensorBridge {
   const double nav_sat_translation_weight_;
   const double nav_sat_inverse_covariance_bias_;
   const double nav_sat_inverse_covariance_weight_;
+  const double position_translation_weight_;
   // nullptr: use first NavSatFix to place ENU frame
   const sensor_msgs::NavSatFix::ConstPtr predefined_enu_frame_position_;
 };

@@ -215,6 +215,7 @@ int MapBuilderBridge::AddTrajectory(
       trajectory_options.nav_sat_translation_weight,
       trajectory_options.nav_sat_inverse_covariance_bias,
       trajectory_options.nav_sat_inverse_covariance_weight,
+      trajectory_options.position_translation_weight,
       predefined_enu_frame_position);
   auto emplace_result =
       trajectory_options_.emplace(trajectory_id, trajectory_options);
@@ -329,17 +330,17 @@ bool MapBuilderBridge::CreateLastSubmapPointCloud(sensor_msgs::PointCloud2& clou
   bool high_resolution = false;
   cartographer::mapping::SubmapId submap_id{0, 0};
   auto all_submap_data = map_builder_->pose_graph()->GetAllSubmapData();
-  
+
   if (all_submap_data.SizeOfTrajectoryOrZero(trajectory_id) == 1){
     submap_id = all_submap_data.BeginOfTrajectory(trajectory_id)->id;
   }
   if (all_submap_data.SizeOfTrajectoryOrZero(trajectory_id) > 1){
     auto it = all_submap_data.EndOfTrajectory(trajectory_id);
     std::advance (it, -2);
-    submap_id = it->id;    
+    submap_id = it->id;
   }
- 
-  
+
+
   if(all_submap_data.Contains(submap_id)) {
     const ::cartographer::mapping::PoseGraph::SubmapData& submap_data
           = all_submap_data.at(submap_id);
