@@ -29,14 +29,16 @@ Parameters:
     Initial yaw to be used for starting the trajectory.
     This will override the odometry yaw if non-zero.
 
+  ~use_fixed_yaw:
+     True if the fixed_yaw parameter is used.
 """
 
 class SlamStarter:
 
     def __init__(self, configuration_directory, configuration_basename):
 
-        self.odom_sub = rospy.Subscriber('odom', Odometry, self.odomCb)
-        self.transform_sub = rospy.Subscriber('transform', TransformStamped, self.transformCb)
+        self.odom_sub = rospy.Subscriber('starter_odom', Odometry, self.odomCb)
+        self.transform_sub = rospy.Subscriber('starter_transform', TransformStamped, self.transformCb)
         self.start_trajectory_proxy = rospy.ServiceProxy('start_trajectory', StartTrajectory)
 
         self.odom_received = False
@@ -46,6 +48,7 @@ class SlamStarter:
         self.configuration_directory = configuration_directory
 
         self.fixed_yaw = rospy.get_param("~fixed_yaw", 0.0)
+        self.use_fixed_yaw = rospy.get_param("~use_fixed_yaw", False)
 
         self.rate = rospy.Rate(10)
 
@@ -53,7 +56,15 @@ class SlamStarter:
     def transformCb(self, data):
         self.transform_received = True
 
-        new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, self.fixed_yaw))
+        if self.use_fixed_yaw:
+          new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, self.fixed_yaw))
+        else:
+          q = [data.pose.pose.orientation.w,
+              data.pose.pose.orientation.x,
+              data.pose.pose.orientation.y,
+              data.pose.pose.orientation.z]
+          yaw = math.atan2( 2 * (q[0]*q[3] + q[1]*q[2]), 1 - 2 * (q[2]**2 + q[3]**2))
+          new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, yaw))
 
         self.start_trajectory(data.transform.translation.x,
                               data.transform.translation.y,
@@ -61,11 +72,10 @@ class SlamStarter:
                               new_orientation)
 
 
-
     def odomCb(self, data):
         self.odom_received = True
 
-        if(abs(self.fixed_yaw > 0.001)):
+        if self.use_fixed_yaw:
           new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, self.fixed_yaw))
         else:
           q = [data.pose.pose.orientation.w,
