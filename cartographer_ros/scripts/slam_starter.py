@@ -59,10 +59,10 @@ class SlamStarter:
         if self.use_fixed_yaw:
           new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, self.fixed_yaw))
         else:
-          q = [data.pose.pose.orientation.w,
-              data.pose.pose.orientation.x,
-              data.pose.pose.orientation.y,
-              data.pose.pose.orientation.z]
+          q = [data.transform.rotation.w,
+              data.transform.rotation.x,
+              data.transform.rotation.y,
+              data.transform.rotation.z]
           yaw = math.atan2( 2 * (q[0]*q[3] + q[1]*q[2]), 1 - 2 * (q[2]**2 + q[3]**2))
           new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, yaw))
 
