@@ -50,7 +50,7 @@ jobs:
         run: |
           git clone https://github.com/larics/uav_ros_cartographer.git
           ./uav_ros_cartographer/installation/install_and_setup_workspace.sh
-          cd uav_ros_cartographer/ros_packages/cartographer
+          cd uav_ros_cartographer/ros_packages/cartographer_ros
           git checkout $GITHUB_SHA
 
       # Runs a single command using the runners shell
