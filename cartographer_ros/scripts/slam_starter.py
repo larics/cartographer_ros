@@ -31,6 +31,9 @@ Parameters:
 
   ~use_fixed_yaw:
      True if the fixed_yaw parameter is used.
+
+  ~num_samples
+    Number of measurements used to calculate the mean starting pose.
 """
 
 class SlamStarter:
@@ -44,11 +47,23 @@ class SlamStarter:
         self.odom_received = False
         self.transform_received = False
 
+        self.num_odoms = 0
+        self.num_transforms = 0
+
+        self.x_sum = 0
+        self.y_sum = 0
+        self.z_sum = 0
+  
+        self.roll_sum = 0
+        self.pitch_sum = 0
+        self.yaw_sum = 0
+
         self.configuration_basename = configuration_basename
         self.configuration_directory = configuration_directory
 
         self.fixed_yaw = rospy.get_param("~fixed_yaw", 0.0)
         self.use_fixed_yaw = rospy.get_param("~use_fixed_yaw", False)
+        self.num_samples_param = rospy.get_param("~num_samples", 10)
 
         self.rate = rospy.Rate(10)
 
@@ -56,54 +71,64 @@ class SlamStarter:
     def transformCb(self, data):
         self.transform_received = True
 
-        if self.use_fixed_yaw:
-          new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, self.fixed_yaw))
-        else:
+        self.num_transforms += 1
+
+        self.x_sum += data.transform.translation.x
+        self.y_sum += data.transform.translation.y
+        self.z_sum += data.transform.translation.z
+        
+        if not self.use_fixed_yaw:
           q = [data.transform.rotation.w,
               data.transform.rotation.x,
               data.transform.rotation.y,
               data.transform.rotation.z]
-          yaw = math.atan2( 2 * (q[0]*q[3] + q[1]*q[2]), 1 - 2 * (q[2]**2 + q[3]**2))
-          new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, yaw))
 
-        self.start_trajectory(data.transform.translation.x,
-                              data.transform.translation.y,
-                              data.transform.translation.z,
-                              new_orientation)
+          self.yaw_sum = math.atan2( 2 * (q[0]*q[3] + q[1]*q[2]), 1 - 2 * (q[2]**2 + q[3]**2))
+
+        if self.num_transforms == self.num_samples_param:
+          self.start_trajectory()
+    #
 
 
     def odomCb(self, data):
         self.odom_received = True
 
-        if self.use_fixed_yaw:
-          new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, self.fixed_yaw))
-        else:
+        self.num_odoms += 1
+
+        self.x_sum += data.pose.pose.position.x
+        self.y_sum += data.pose.pose.position.y
+        self.z_sum += data.pose.pose.position.z
+
+        if not self.use_fixed_yaw:
           q = [data.pose.pose.orientation.w,
               data.pose.pose.orientation.x,
               data.pose.pose.orientation.y,
               data.pose.pose.orientation.z]
-          yaw = math.atan2( 2 * (q[0]*q[3] + q[1]*q[2]), 1 - 2 * (q[2]**2 + q[3]**2))
-          new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, yaw))
 
-        self.start_trajectory(data.pose.pose.position.x,
-                              data.pose.pose.position.y,
-                              data.pose.pose.position.z,
-                              new_orientation)
+          self.yaw_sum += math.atan2( 2 * (q[0]*q[3] + q[1]*q[2]), 1 - 2 * (q[2]**2 + q[3]**2))
+        
+        if self.num_odoms == self.num_samples_param:
+          self.start_trajectory()
+    #
 
-
-    def start_trajectory(self, x, y, z, orientation):
-
+    def start_trajectory(self):
+          
+        if self.use_fixed_yaw:
+          new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, self.fixed_yaw))
+        else:
+          new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, self.yaw_sum / self.num_samples_param))
+          
         self.req = StartTrajectoryRequest()
 
         self.req.configuration_directory = self.configuration_directory
         self.req.configuration_basename = self.configuration_basename
         self.req.use_initial_pose = True
         self.req.relative_to_trajectory_id = -1
-        self.req.initial_pose.orientation = orientation
+        self.req.initial_pose.orientation = new_orientation
 
-        self.req.initial_pose.position.x = x
-        self.req.initial_pose.position.y = y
-        self.req.initial_pose.position.z = z
+        self.req.initial_pose.position.x = self.x_sum / self.num_samples_param
+        self.req.initial_pose.position.y = self.y_sum / self.num_samples_param
+        self.req.initial_pose.position.z = self.z_sum / self.num_samples_param
 
         try:
             rospy.sleep(1)
