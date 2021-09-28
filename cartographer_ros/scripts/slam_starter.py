@@ -34,6 +34,15 @@ Parameters:
 
   ~num_samples
     Number of measurements used to calculate the mean starting pose.
+
+  ~fixed_position:
+    User-defined starting coordinates for SLAM.
+    Initial yaw is set from the parameter ~fixed_yaw
+    Defaults to [0.0, 0.0, 0.0]
+
+  ~use_fixed_position:
+    True if the fixed_position parameter is used.
+    Default: false
 """
 
 class SlamStarter:
@@ -65,7 +74,19 @@ class SlamStarter:
         self.use_fixed_yaw = rospy.get_param("~use_fixed_yaw", False)
         self.num_samples_param = rospy.get_param("~num_samples", 10)
 
+        self.use_fixed_position_param = rospy.get_param("~use_fixed_position", False)
+        self.fixed_position_x_param = rospy.get_param("~fixed_position_x", 0.0)
+        self.fixed_position_y_param = rospy.get_param("~fixed_position_y", 0.0)
+        self.fixed_position_z_param = rospy.get_param("~fixed_position_z", 0.0)
+
         self.rate = rospy.Rate(10)
+
+        if self.use_fixed_position_param:
+          self.x_sum = self.fixed_position_x_param * self.num_samples_param
+          self.y_sum = self.fixed_position_y_param * self.num_samples_param
+          self.z_sum = self.fixed_position_z_param * self.num_samples_param
+
+          self.start_trajectory()
 
 
     def transformCb(self, data):
