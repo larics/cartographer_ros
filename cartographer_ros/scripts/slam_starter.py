@@ -35,13 +35,17 @@ Parameters:
   ~num_samples
     Number of measurements used to calculate the mean starting pose.
 
-  ~fixed_position:
+  ~fixed_position_x, ~fixed_position_y and ~fixed_position_z:
     User-defined starting coordinates for SLAM.
     Initial yaw is set from the parameter ~fixed_yaw
     Defaults to [0.0, 0.0, 0.0]
 
   ~use_fixed_position:
     True if the fixed_position parameter is used.
+    Default: false
+
+  ~use_median_starting_pose:
+    Use median starting pose in stead of average starting pose.
     Default: false
 """
 
@@ -62,10 +66,16 @@ class SlamStarter:
         self.x_sum = 0
         self.y_sum = 0
         self.z_sum = 0
+
+        self.x_list = []
+        self.y_list = []
+        self.z_list = []
   
         self.roll_sum = 0
         self.pitch_sum = 0
         self.yaw_sum = 0
+
+        self.yaw_list = []
 
         self.configuration_basename = configuration_basename
         self.configuration_directory = configuration_directory
@@ -78,8 +88,12 @@ class SlamStarter:
         self.fixed_position_x_param = rospy.get_param("~fixed_position_x", 0.0)
         self.fixed_position_y_param = rospy.get_param("~fixed_position_y", 0.0)
         self.fixed_position_z_param = rospy.get_param("~fixed_position_z", 0.0)
+        self.use_median_starting_pose_param = rospy.get_param("~use_median_starting_pose", False)
 
         self.rate = rospy.Rate(10)
+
+        if self.use_fixed_position_param and self.use_median_starting_pose_param:
+            rospy.logwarn("~use_fixed_position and ~use_median_starting_pose are both set.")
 
         if self.use_fixed_position_param:
           self.x_sum = self.fixed_position_x_param * self.num_samples_param
@@ -97,6 +111,10 @@ class SlamStarter:
         self.x_sum += data.transform.translation.x
         self.y_sum += data.transform.translation.y
         self.z_sum += data.transform.translation.z
+
+        self.x_list.append(data.transform.translation.x)
+        self.y_list.append(data.transform.translation.y)
+        self.z_list.append(data.transform.translation.z)
         
         if not self.use_fixed_yaw:
           q = [data.transform.rotation.w,
@@ -104,7 +122,9 @@ class SlamStarter:
               data.transform.rotation.y,
               data.transform.rotation.z]
 
-          self.yaw_sum = math.atan2( 2 * (q[0]*q[3] + q[1]*q[2]), 1 - 2 * (q[2]**2 + q[3]**2))
+          curr_yaw = math.atan2( 2 * (q[0]*q[3] + q[1]*q[2]), 1 - 2 * (q[2]**2 + q[3]**2))
+          self.yaw_sum = curr_yaw
+          self.yaw_list.append(curr_yaw)
 
         if self.num_transforms == self.num_samples_param:
           self.start_trajectory()
@@ -120,13 +140,19 @@ class SlamStarter:
         self.y_sum += data.pose.pose.position.y
         self.z_sum += data.pose.pose.position.z
 
+        self.x_list.append(data.transform.translation.x)
+        self.y_list.append(data.transform.translation.y)
+        self.z_list.append(data.transform.translation.z)
+
         if not self.use_fixed_yaw:
           q = [data.pose.pose.orientation.w,
               data.pose.pose.orientation.x,
               data.pose.pose.orientation.y,
               data.pose.pose.orientation.z]
 
-          self.yaw_sum += math.atan2( 2 * (q[0]*q[3] + q[1]*q[2]), 1 - 2 * (q[2]**2 + q[3]**2))
+          curr_yaw = math.atan2( 2 * (q[0]*q[3] + q[1]*q[2]), 1 - 2 * (q[2]**2 + q[3]**2))
+          self.yaw_sum = curr_yaw
+          self.yaw_list.append(curr_yaw)
         
         if self.num_odoms == self.num_samples_param:
           self.start_trajectory()
@@ -137,8 +163,13 @@ class SlamStarter:
         if self.use_fixed_yaw:
           new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, self.fixed_yaw))
         else:
+          print("average yaw")
           new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, self.yaw_sum / self.num_samples_param))
-          
+          if self.use_median_starting_pose_param:
+            self.yaw_list.sort()
+            new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, self.yaw_list[self.num_samples_param/2]))
+
+
         self.req = StartTrajectoryRequest()
 
         self.req.configuration_directory = self.configuration_directory
@@ -150,6 +181,15 @@ class SlamStarter:
         self.req.initial_pose.position.x = self.x_sum / self.num_samples_param
         self.req.initial_pose.position.y = self.y_sum / self.num_samples_param
         self.req.initial_pose.position.z = self.z_sum / self.num_samples_param
+
+        if self.use_median_starting_pose_param and not self.use_fixed_position_param:
+          self.x_list.sort()
+          self.y_list.sort()
+          self.z_list.sort()
+
+          self.req.initial_pose.position.x = self.x_list[self.num_samples_param/2]
+          self.req.initial_pose.position.y = self.y_list[self.num_samples_param/2]
+          self.req.initial_pose.position.z = self.z_list[self.num_samples_param/2]
 
         try:
             rospy.sleep(1)
