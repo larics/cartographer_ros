@@ -140,9 +140,9 @@ class SlamStarter:
         self.y_sum += data.pose.pose.position.y
         self.z_sum += data.pose.pose.position.z
 
-        self.x_list.append(data.transform.translation.x)
-        self.y_list.append(data.transform.translation.y)
-        self.z_list.append(data.transform.translation.z)
+        self.x_list.append(data.pose.pose.position.x)
+        self.y_list.append(data.pose.pose.position.y)
+        self.z_list.append(data.pose.pose.position.z)
 
         if not self.use_fixed_yaw:
           q = [data.pose.pose.orientation.w,
