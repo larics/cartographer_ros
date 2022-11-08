@@ -167,7 +167,7 @@ class SlamStarter:
           new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, self.yaw_sum / self.num_samples_param))
           if self.use_median_starting_pose_param:
             self.yaw_list.sort()
-            new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, self.yaw_list[self.num_samples_param/2]))
+            new_orientation = Quaternion(*tf_conversions.transformations.quaternion_from_euler(0, 0, self.yaw_list[int(self.num_samples_param)//2]))
 
 
         self.req = StartTrajectoryRequest()
@@ -186,10 +186,11 @@ class SlamStarter:
           self.x_list.sort()
           self.y_list.sort()
           self.z_list.sort()
-
-          self.req.initial_pose.position.x = self.x_list[self.num_samples_param/2]
-          self.req.initial_pose.position.y = self.y_list[self.num_samples_param/2]
-          self.req.initial_pose.position.z = self.z_list[self.num_samples_param/2]
+            
+          index = int(self.num_samples_param)//2
+          self.req.initial_pose.position.x = self.x_list[index]
+          self.req.initial_pose.position.y = self.y_list[index]
+          self.req.initial_pose.position.z = self.z_list[index]
 
         try:
             rospy.sleep(1)
