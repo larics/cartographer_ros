@@ -228,7 +228,7 @@ void MapBuilderBridge::FinishTrajectory(const int trajectory_id) {
 
   // Make sure there is a trajectory with 'trajectory_id'.
   CHECK(GetTrajectoryStates().count(trajectory_id));
-  map_builder_->FinishTrajectory(trajectory_id);
+      //map_builder_->FinishTrajectory(trajectory_id);
   sensor_bridges_.erase(trajectory_id);
 }
 

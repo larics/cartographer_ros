@@ -38,6 +38,9 @@
 DEFINE_bool(collect_metrics, false,
             "Activates the collection of runtime metrics. If activated, the "
             "metrics can be accessed via a ROS service.");
+DEFINE_bool(run_final_optimization, false,
+            "Runs the final optmimization after the datasets have been processed."
+            "Turning off final optimizations saves time when running only local SLAM.");
 DEFINE_string(configuration_directory, "",
               "First directory in which configuration files are searched, "
               "second is always the Cartographer installation to allow "
@@ -347,7 +350,7 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
     clock.clock = msg.getTime();
     clock_publisher.publish(clock);
 
-    if (is_last_message_in_bag) {
+    if (is_last_message_in_bag && FLAGS_run_final_optimization) {
       node.FinishTrajectory(trajectory_id);
     }
   }
@@ -356,7 +359,14 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
   // final optimization, serialization, and optional indefinite spinning at the
   // end.
   clock_republish_timer.start();
-  node.RunFinalOptimization();
+  if(FLAGS_run_final_optimization)
+  {
+      node.RunFinalOptimization();
+  }
+  else
+  {
+      LOG(INFO) << "Final optimization disabled";
+  }
 
   const std::chrono::time_point<std::chrono::steady_clock> end_time =
       std::chrono::steady_clock::now();
@@ -378,7 +388,9 @@ void RunOfflineNode(const MapBuilderFactory& map_builder_factory) {
 
   // Serialize unless we have neither a bagfile nor an explicit state filename.
   if (::ros::ok() &&
-      !(bag_filenames.empty() && FLAGS_save_state_filename.empty())) {
+      !(bag_filenames.empty() && FLAGS_save_state_filename.empty())
+      &&
+      FLAGS_run_final_optimization) {
     const std::string state_output_filename =
         FLAGS_save_state_filename.empty()
             ? absl::StrCat(bag_filenames.front(), ".pbstream")
