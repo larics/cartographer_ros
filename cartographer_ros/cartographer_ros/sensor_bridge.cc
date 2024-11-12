@@ -110,6 +110,32 @@ void SensorBridge::HandleTransformMessage(
                   inverse_covariance}}});
 }
 
+void SensorBridge::HandlePoseMessage(
+    const std::string& sensor_id, const geometry_msgs::PoseStamped::ConstPtr& msg) {
+
+  // PoseStamped messages don't have covariance info. Default to I.
+  std::array<double, 9> inverse_covariance{{1,0,0,0,1,0,0,0, 1}};
+
+  auto translation = Eigen::Vector3d(
+      msg->pose.position.x,
+      msg->pose.position.y,
+      msg->pose.position.z
+      );
+
+  trajectory_builder_->AddSensorData(
+      sensor_id,
+      carto::sensor::LandmarkData{
+          cartographer_ros::FromRos(msg->header.stamp),
+          std::vector<carto::sensor::LandmarkObservation>{
+              carto::sensor::LandmarkObservation{
+                  "fixed",
+                  Rigid3d::Translation(translation),
+                  position_translation_weight_,
+                  0.,     /* rotation_weight */
+                  false,  /* observed_from_tracking */
+                  inverse_covariance}}});
+}
+
 void SensorBridge::HandleNavSatFixMessage(
     const std::string& sensor_id, const sensor_msgs::NavSatFix::ConstPtr& msg) {
   if (msg->status.status == sensor_msgs::NavSatStatus::STATUS_NO_FIX) {

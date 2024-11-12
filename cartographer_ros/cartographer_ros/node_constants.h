@@ -30,6 +30,7 @@ constexpr char kImuTopic[] = "imu";
 constexpr char kOdometryTopic[] = "odom";
 constexpr char kNavSatFixTopic[] = "fix";
 constexpr char kTransformTopic[] = "transform";
+constexpr char kPoseTopic[] = "pose";
 constexpr char kLandmarkTopic[] = "landmark";
 constexpr char kFinishTrajectoryServiceName[] = "finish_trajectory";
 constexpr char kOccupancyGridTopic[] = "map";

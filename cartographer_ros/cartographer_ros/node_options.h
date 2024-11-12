@@ -40,7 +40,6 @@ struct NodeOptions {
   double nav_sat_predefined_enu_frame_lat_deg;
   double nav_sat_predefined_enu_frame_lon_deg;
   double nav_sat_predefined_enu_frame_alt_m;
-  bool use_pose_sensor; // Expects a geometry_msgs::TransformStamped message
 };
 
 NodeOptions CreateNodeOptions(

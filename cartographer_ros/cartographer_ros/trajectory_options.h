@@ -39,7 +39,8 @@ struct TrajectoryOptions {
   double nav_sat_inverse_covariance_bias;
   double position_translation_weight;
   bool use_landmarks;
-  bool use_position_sensor;
+  bool use_position_sensor_pose;
+  bool use_position_sensor_transform;
   bool publish_frame_projected_to_2d;
   int num_laser_scans;
   int num_multi_echo_laser_scans;

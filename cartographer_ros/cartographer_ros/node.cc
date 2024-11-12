@@ -588,12 +588,19 @@ void Node::LaunchSubscribers(const TrajectoryOptions& options,
              &node_handle_, this),
          kLandmarkTopic});
   }
-  if (options.use_position_sensor) {
+  if (options.use_position_sensor_transform) {
     subscribers_[trajectory_id].push_back(
         {SubscribeWithHandler<geometry_msgs::TransformStamped>(
              &Node::HandleTransformMessage, trajectory_id, kTransformTopic,
              &node_handle_, this),
          kTransformTopic});
+  }
+  if (options.use_position_sensor_pose) {
+    subscribers_[trajectory_id].push_back(
+        {SubscribeWithHandler<geometry_msgs::PoseStamped>(
+             &Node::HandlePoseMessage, trajectory_id, kPoseTopic,
+             &node_handle_, this),
+         kPoseTopic});
   }
 }
 
@@ -913,6 +920,17 @@ void Node::HandleTransformMessage(const int trajectory_id,
   }
   map_builder_bridge_.sensor_bridge(trajectory_id)
       ->HandleTransformMessage(sensor_id, msg);
+}
+
+void Node::HandlePoseMessage(const int trajectory_id,
+                                  const std::string& sensor_id,
+                                  const geometry_msgs::PoseStamped::ConstPtr& msg) { // msg type
+  absl::MutexLock lock(&mutex_);
+  if (!sensor_samplers_.at(trajectory_id).fixed_frame_pose_sampler.Pulse()) {
+    return;
+  }
+  map_builder_bridge_.sensor_bridge(trajectory_id)
+      ->HandlePoseMessage(sensor_id, msg);
 }
 
 

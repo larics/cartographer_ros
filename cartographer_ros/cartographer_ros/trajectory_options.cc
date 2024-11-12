@@ -54,7 +54,8 @@ TrajectoryOptions CreateTrajectoryOptions(
       lua_parameter_dictionary->GetBool("provide_odom_frame");
   options.use_odometry = lua_parameter_dictionary->GetBool("use_odometry");
   options.use_nav_sat = lua_parameter_dictionary->GetBool("use_nav_sat");
-  options.use_position_sensor = lua_parameter_dictionary->GetBool("use_position_sensor");
+  options.use_position_sensor_pose = lua_parameter_dictionary->GetBool("use_position_sensor_pose");
+  options.use_position_sensor_transform = lua_parameter_dictionary->GetBool("use_position_sensor_transform");
   options.nav_sat_translation_weight =
       lua_parameter_dictionary->GetDouble("nav_sat_translation_weight");
   options.nav_sat_inverse_covariance_bias =

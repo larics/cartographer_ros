@@ -115,6 +115,9 @@ class Node {
   void HandleTransformMessage(int trajectory_id, const std::string& sensor_id,
                               const geometry_msgs::TransformStamped::ConstPtr& msg);
 
+  void HandlePoseMessage(int trajectory_id, const std::string& sensor_id,
+                              const geometry_msgs::PoseStamped::ConstPtr& msg);
+
   // Serializes the complete Node state.
   void SerializeState(const std::string& filename,
                       const bool include_unfinished_submaps);
